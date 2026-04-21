@@ -1,0 +1,285 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
+// enough when changing adapters.
+// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
+datasource db {
+  provider = "sqlite"
+  url      = "file:dev.sqlite"
+}
+
+model Session {
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+enum AlertStatus {
+  ACTIVE
+  RESOLVED
+}
+
+enum AlertLevel {
+  LOW
+  CRITICAL
+  OUT_OF_STOCK
+}
+
+enum NotificationEvent {
+  LOW_STOCK
+  CRITICAL_STOCK
+  OUT_OF_STOCK
+  RESTOCKED
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  OTT
+}
+
+enum NotificationDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum ProductClassification {
+  FAST_MOVING
+  SLOW_MOVING
+  STABLE
+  UNKNOWN
+}
+
+model Merchant {
+  id           Int      @id @default(autoincrement())
+  shopDomain   String   @unique
+  contactEmail String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  settings               Settings?
+  locations              Location[]
+  products               Product[]
+  variants               Variant[]
+  inventoryAlerts        InventoryAlert[]
+  salesData              SalesData[]
+  notificationFlows      NotificationFlow[]
+  notificationDeliveries NotificationDelivery[]
+  webhookDeliveries      WebhookDelivery[]
+}
+
+model Settings {
+  id                       Int      @id @default(autoincrement())
+  merchantId               Int      @unique
+  monitoringEnabled        Boolean  @default(true)
+  globalLowThreshold       Int      @default(5)
+  globalCriticalThreshold  Int?
+  safetyBufferDays         Int      @default(5)
+  notifyOnRestocked        Boolean  @default(false)
+  schedulerIntervalMinutes Int      @default(15)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+}
+
+model Location {
+  id                Int      @id @default(autoincrement())
+  merchantId        Int
+  shopifyLocationId String
+  name              String
+  lowThreshold      Int?
+  criticalThreshold Int?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  merchant        Merchant           @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  inventoryLevels VariantInventory[]
+  inventoryAlerts InventoryAlert[]
+
+  @@unique([merchantId, shopifyLocationId])
+  @@index([merchantId])
+}
+
+model Product {
+  id                Int                   @id @default(autoincrement())
+  merchantId        Int
+  shopifyProductId  String
+  title             String
+  lowThreshold      Int?
+  criticalThreshold Int?
+  classification    ProductClassification @default(UNKNOWN)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  merchant        Merchant         @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  variants        Variant[]
+  inventoryAlerts InventoryAlert[]
+
+  @@unique([merchantId, shopifyProductId])
+  @@index([merchantId])
+}
+
+model Variant {
+  id                     Int       @id @default(autoincrement())
+  merchantId             Int
+  productId              Int
+  shopifyVariantId       String
+  shopifyInventoryItemId String?
+  sku                    String?
+  inventoryQuantity      Int       @default(0)
+  lowThreshold           Int?
+  criticalThreshold      Int?
+  salesVelocity7d        Float?
+  salesVelocity30d       Float?
+  forecastDaily          Float?
+  forecast7d             Float?
+  forecast30d            Float?
+  reorderSuggestionQty   Int?
+  lastInventorySyncAt    DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  merchant        Merchant           @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  product         Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  inventoryLevels VariantInventory[]
+  inventoryAlerts InventoryAlert[]
+  salesData       SalesData[]
+
+  @@unique([merchantId, shopifyVariantId])
+  @@index([merchantId, productId])
+}
+
+model VariantInventory {
+  id         Int      @id @default(autoincrement())
+  variantId  Int
+  locationId Int
+  available  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  variant  Variant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([variantId, locationId])
+  @@index([locationId])
+}
+
+model InventoryAlert {
+  id              Int               @id @default(autoincrement())
+  merchantId      Int
+  productId       Int
+  variantId       Int
+  locationId      Int?
+  thresholdValue  Int
+  currentQuantity Int
+  alertStatus     AlertStatus       @default(ACTIVE)
+  alertLevel      AlertLevel
+  triggerEvent    NotificationEvent
+  lastAlertSentAt DateTime?
+  resolvedAt      DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  merchant               Merchant               @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  product                Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant                Variant                @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  location               Location?              @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  notificationDeliveries NotificationDelivery[]
+
+  @@index([merchantId, alertStatus, alertLevel])
+  @@index([merchantId, variantId, locationId])
+}
+
+model SalesData {
+  id            Int      @id @default(autoincrement())
+  merchantId    Int
+  variantId     Int
+  sourceOrderId String?
+  date          DateTime
+  quantitySold  Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  variant  Variant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([variantId, sourceOrderId])
+  @@index([merchantId, date])
+  @@index([variantId, date])
+}
+
+model NotificationFlow {
+  id         Int                 @id @default(autoincrement())
+  merchantId Int
+  event      NotificationEvent
+  channel    NotificationChannel
+  enabled    Boolean             @default(true)
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@unique([merchantId, event, channel])
+  @@index([merchantId])
+}
+
+model NotificationDelivery {
+  id           Int                        @id @default(autoincrement())
+  merchantId   Int
+  alertId      Int?
+  event        NotificationEvent
+  channel      NotificationChannel
+  status       NotificationDeliveryStatus @default(PENDING)
+  recipient    String?
+  errorMessage String?
+  retryCount   Int                        @default(0)
+  maxRetries   Int                        @default(3)
+  nextRetryAt  DateTime?
+  attemptedAt  DateTime                   @default(now())
+  deliveredAt  DateTime?
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
+
+  merchant Merchant        @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  alert    InventoryAlert? @relation(fields: [alertId], references: [id], onDelete: SetNull)
+
+  @@index([merchantId, attemptedAt])
+  @@index([status])
+  @@index([status, nextRetryAt])
+}
+
+model WebhookDelivery {
+  id          Int      @id @default(autoincrement())
+  merchantId  Int?
+  shopDomain  String
+  topic       String
+  webhookId   String
+  payloadHash String?
+  createdAt   DateTime @default(now())
+
+  merchant Merchant? @relation(fields: [merchantId], references: [id], onDelete: SetNull)
+
+  @@unique([shopDomain, webhookId])
+  @@index([shopDomain, topic, createdAt])
+}
