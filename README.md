@@ -1,77 +1,113 @@
 # Inventory Shipping Monitoring
 
-Shopify embedded app for inventory monitoring, alerting, and basic demand
-planning.
+Team note: this repo is the Shopify embedded app we are building for low-stock monitoring and shipping-side inventory operations.
 
-## Features
+## Why this app exists
 
-- Variant-level inventory monitoring with threshold priority:
-  variant -> product -> location -> global
-- Multi-level stock states: low, critical, out of stock
-- Alert lifecycle: active and resolved
-- Notification flow configuration per event/channel
-- Sales velocity and weighted forecast
-- Reorder quantity suggestions with safety buffer
-- Cron reconciliation with webhook idempotency
+We need a lightweight app for merchants that:
 
-## Tech Stack
+- catches low stock before stockout
+- sends alerts without manual checking in Shopify Admin
+- gives basic forecast + reorder suggestion so staff can plan replenishment faster
+
+This is not a full WMS. Scope is focused on inventory visibility and alerting.
+
+## Current product scope in code
+
+- Variant-level monitoring
+- Threshold priority:
+  - Variant override
+  - Product override
+  - Location override
+  - Global fallback
+- Alert levels:
+  - Low
+  - Critical
+  - Out of stock
+- Alert lifecycle:
+  - ACTIVE
+  - RESOLVED
+- Notification flow by event/channel (email is implemented, SMS/OTT prepared)
+- Sales velocity + weighted forecast
+- Reorder suggestion with safety buffer
+- Webhook idempotency + cron reconciliation
+
+## Stack
 
 - TypeScript
 - Shopify App React Router
-- Prisma + SQLite (default)
+- Prisma
+- SQLite for local/dev
 - Polaris web components
-- Vitest for unit/integration tests
+- Vitest for tests
 
-## Local Development
+## Local setup
 
-1. Install dependencies:
+### 1) Install
 
 ```bash
 npm install
 ```
 
-2. Generate Prisma client and apply migrations:
+### 2) Prepare DB and Prisma client
 
 ```bash
 npm run setup
 ```
 
-3. Start development:
+### 3) Run app
 
 ```bash
 shopify app dev
 ```
 
-## Scripts
+## Required environment variables
 
-- `npm run dev`: run Shopify app in development
-- `npm run build`: build app
-- `npm run start`: serve production build
-- `npm run lint`: run eslint
-- `npm run typecheck`: run TypeScript checks
-- `npm test`: run Vitest suite
-
-## Environment Variables
-
-Core:
+### Shopify
 
 - `SHOPIFY_API_KEY`
 - `SHOPIFY_API_SECRET`
 - `SHOPIFY_APP_URL`
 - `SCOPES`
 
-Monitoring/ops:
+### Cron / operations
 
 - `CRON_SECRET`
-- `CRON_BATCH_SIZE` (optional)
+- `CRON_BATCH_SIZE` (optional, defaults in code)
 
-Email:
+### Email
 
 - `RESEND_API_KEY`
 - `RESEND_FROM_EMAIL`
-- `ALERT_EMAIL_TO` (fallback recipient)
+- `ALERT_EMAIL_TO` (fallback if merchant contact email is empty)
 
-## Notes
+## Common commands
 
-- In production, `SHOPIFY_APP_URL` must use `https://`.
-- Configure real production URLs in `shopify.app.toml` before deployment.
+- `npm run dev` -> run local app
+- `npm run build` -> build production bundle
+- `npm run start` -> run production server
+- `npm run lint` -> eslint
+- `npm run typecheck` -> TypeScript check
+- `npm test` -> unit/integration tests
+
+## Operational flow (quick reference)
+
+1. Merchant installs app and enables monitoring.
+2. Inventory webhooks + cron reconciliation update stock state.
+3. Threshold engine decides level (low/critical/out-of-stock).
+4. Alert lifecycle creates/resolves ACTIVE alerts.
+5. Notification dispatcher sends and logs delivery status.
+6. Forecast service updates velocity, demand forecast, and reorder quantity.
+
+## Before deploying
+
+- Set real production URLs in `shopify.app.toml`.
+- Ensure `SHOPIFY_APP_URL` is HTTPS (enforced by code in production).
+- Confirm cron caller sends `Authorization: Bearer <CRON_SECRET>`.
+- Confirm email credentials are valid.
+
+## Notes for contributors
+
+- Keep business logic in `app/services/*`.
+- Keep route handlers thin; no heavy logic in route files.
+- Add tests for new threshold/alert/forecast behavior before merge.
