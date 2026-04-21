@@ -41,14 +41,14 @@ vi.mock("../../app/db.server", () => ({
 describe("webhooks.orders.create action", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    ensureMerchantSetupMock.mockResolvedValue({ id: 1, shopDomain: "demo.myshopify.com" });
+    ensureMerchantSetupMock.mockResolvedValue({ id: 1, shopDomain: "store-a.myshopify.com" });
     recomputeMerchantForecastsMock.mockResolvedValue(undefined);
   });
 
   it("ignores duplicate webhook delivery id", async () => {
     webhookMock.mockResolvedValue({
       topic: "ORDERS_CREATE",
-      shop: "demo.myshopify.com",
+      shop: "store-a.myshopify.com",
       payload: { id: 123, line_items: [] },
     });
     markWebhookProcessedMock.mockResolvedValue(false);
@@ -71,7 +71,7 @@ describe("webhooks.orders.create action", () => {
   it("upserts sales rows and recomputes forecasts for new deliveries", async () => {
     webhookMock.mockResolvedValue({
       topic: "ORDERS_CREATE",
-      shop: "demo.myshopify.com",
+      shop: "store-a.myshopify.com",
       payload: {
         id: 456,
         created_at: "2026-04-20T10:00:00.000Z",

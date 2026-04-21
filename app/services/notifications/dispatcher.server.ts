@@ -124,7 +124,7 @@ export async function dispatchInventoryNotification(payload: DispatchPayload) {
           delivery.id,
           delivery.retryCount,
           delivery.maxRetries,
-          `${flow.channel} is not implemented in MVP1`,
+          `${flow.channel} channel is not implemented`,
         );
       }
     } catch (error) {

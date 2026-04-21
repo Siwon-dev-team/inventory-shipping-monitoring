@@ -21,9 +21,10 @@ export default function App() {
   return (
     <div className={styles.index}>
       <div className={styles.content}>
-        <h1 className={styles.heading}>A short heading about [your app]</h1>
+        <h1 className={styles.heading}>Inventory Shipping Monitoring</h1>
         <p className={styles.text}>
-          A tagline about [your app] that describes your value proposition.
+          Monitor stock levels, receive low-stock alerts, and plan restocking
+          from one simple dashboard.
         </p>
         {showForm && (
           <Form className={styles.form} method="post" action="/auth/login">
@@ -39,16 +40,16 @@ export default function App() {
         )}
         <ul className={styles.list}>
           <li>
-            <strong>Product feature</strong>. Some detail about your feature and
-            its benefit to your customer.
+            <strong>Low-stock alerts</strong>. Detect low, critical, and
+            out-of-stock variants before they impact sales.
           </li>
           <li>
-            <strong>Product feature</strong>. Some detail about your feature and
-            its benefit to your customer.
+            <strong>Flexible thresholds</strong>. Configure global, product,
+            variant, and location threshold rules.
           </li>
           <li>
-            <strong>Product feature</strong>. Some detail about your feature and
-            its benefit to your customer.
+            <strong>Forecast and reorder</strong>. Use sales velocity and demand
+            forecasts to make restocking decisions.
           </li>
         </ul>
       </div>
