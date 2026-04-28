@@ -1,13 +1,7 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
-// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
-// enough when changing adapters.
-// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
 datasource db {
   provider = "sqlite"
   url      = "file:dev.sqlite"
@@ -70,6 +64,13 @@ enum ProductClassification {
   UNKNOWN
 }
 
+enum MetricEventType {
+  APP_INSTALLED
+  MONITORING_ENABLED
+  ALERT_CREATED
+  ALERT_RESOLVED
+}
+
 model Merchant {
   id           Int      @id @default(autoincrement())
   shopDomain   String   @unique
@@ -86,6 +87,7 @@ model Merchant {
   notificationFlows      NotificationFlow[]
   notificationDeliveries NotificationDelivery[]
   webhookDeliveries      WebhookDelivery[]
+  metricEvents           MetricEvent[]
 }
 
 model Settings {
@@ -282,4 +284,18 @@ model WebhookDelivery {
 
   @@unique([shopDomain, webhookId])
   @@index([shopDomain, topic, createdAt])
+}
+
+model MetricEvent {
+  id         Int             @id @default(autoincrement())
+  merchantId Int
+  eventType  MetricEventType
+  metricKey  String?
+  value      Float?
+  metadata   String?
+  createdAt  DateTime        @default(now())
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId, eventType, createdAt])
 }

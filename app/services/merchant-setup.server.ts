@@ -1,6 +1,11 @@
 import type { Merchant, Settings } from "@prisma/client";
-import { NotificationChannel, NotificationEvent } from "@prisma/client";
+import {
+  MetricEventType,
+  NotificationChannel,
+  NotificationEvent,
+} from "@prisma/client";
 import prisma from "../db.server";
+import { recordMetricEvent } from "./metrics.server";
 
 type MerchantWithSettings = Merchant & { settings: Settings | null };
 
@@ -35,6 +40,11 @@ export async function ensureMerchantSetup(
   shopDomain: string,
   contactEmail?: string | null,
 ): Promise<MerchantWithSettings> {
+  const existingMerchant = await prisma.merchant.findUnique({
+    where: { shopDomain },
+    select: { id: true },
+  });
+
   const merchant = await prisma.merchant.upsert({
     where: { shopDomain },
     update: {
@@ -91,6 +101,13 @@ export async function ensureMerchantSetup(
         channel: entry.channel,
         enabled: entry.enabled,
       },
+    });
+  }
+
+  if (!existingMerchant) {
+    await recordMetricEvent({
+      merchantId: merchant.id,
+      eventType: MetricEventType.APP_INSTALLED,
     });
   }
 

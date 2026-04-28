@@ -6,16 +6,11 @@ import {
 } from "@shopify/shopify-app-react-router/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import prisma from "./db.server";
+import { validateProductionReadiness } from "./config/deploy-readiness.server";
 
 const isProduction = process.env.NODE_ENV === "production";
 if (isProduction) {
-  if (!process.env.SHOPIFY_API_SECRET) {
-    throw new Error("SHOPIFY_API_SECRET is required in production");
-  }
-
-  if (!process.env.SHOPIFY_APP_URL?.startsWith("https://")) {
-    throw new Error("SHOPIFY_APP_URL must use HTTPS in production");
-  }
+  validateProductionReadiness();
 }
 
 const shopify = shopifyApp({

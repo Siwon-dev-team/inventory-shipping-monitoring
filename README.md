@@ -1,18 +1,18 @@
 # Inventory Shipping Monitoring
 
-Team note: this repo is the Shopify embedded app we are building for low-stock monitoring and shipping-side inventory operations.
+Internal Shopify app for inventory monitoring, alerting, and basic demand planning.
 
-## Why this app exists
+## Purpose
 
-We need a lightweight app for merchants that:
+This app is built to:
 
-- catches low stock before stockout
-- sends alerts without manual checking in Shopify Admin
-- gives basic forecast + reorder suggestion so staff can plan replenishment faster
+- detect low stock before stockout
+- send alerts without manual inventory checks
+- estimate short-term demand and suggest reorder quantity
 
-This is not a full WMS. Scope is focused on inventory visibility and alerting.
+It is not a warehouse management system. Scope is inventory visibility and alert lifecycle.
 
-## Current product scope in code
+## Implemented Scope
 
 - Variant-level monitoring
 - Threshold priority:
@@ -32,7 +32,7 @@ This is not a full WMS. Scope is focused on inventory visibility and alerting.
 - Reorder suggestion with safety buffer
 - Webhook idempotency + cron reconciliation
 
-## Stack
+## Tech Stack
 
 - TypeScript
 - Shopify App React Router
@@ -41,47 +41,50 @@ This is not a full WMS. Scope is focused on inventory visibility and alerting.
 - Polaris web components
 - Vitest for tests
 
-## Local setup
+## Local Setup
 
-### 1) Install
+1) Install dependencies
 
 ```bash
 npm install
 ```
 
-### 2) Prepare DB and Prisma client
+2) Prepare Prisma client and run migrations
 
 ```bash
 npm run setup
 ```
 
-### 3) Run app
+3) Start app
 
 ```bash
 shopify app dev
 ```
 
-## Required environment variables
+## Required Environment Variables
 
-### Shopify
+Shopify:
 
 - `SHOPIFY_API_KEY`
 - `SHOPIFY_API_SECRET`
 - `SHOPIFY_APP_URL`
 - `SCOPES`
 
-### Cron / operations
+Cron / Operations:
 
 - `CRON_SECRET`
-- `CRON_BATCH_SIZE` (optional, defaults in code)
+- `CRON_BATCH_SIZE` (optional)
+- `SYNC_PRODUCTS_PAGE_SIZE` (optional)
+- `SYNC_VARIANTS_PAGE_SIZE` (optional)
+- `SYNC_INVENTORY_LEVELS_PAGE_SIZE` (optional)
 
-### Email
+Email:
 
 - `RESEND_API_KEY`
-- `RESEND_FROM_EMAIL`
-- `ALERT_EMAIL_TO` (fallback if merchant contact email is empty)
+- `RESEND_FROM_EMAIL`  
+- `ALERT_EMAIL_TO` (fallback recipient)
 
-## Common commands
+## Commands
 
 - `npm run dev` -> run local app
 - `npm run build` -> build production bundle
@@ -90,7 +93,7 @@ shopify app dev
 - `npm run typecheck` -> TypeScript check
 - `npm test` -> unit/integration tests
 
-## Operational flow (quick reference)
+## Runtime Flow
 
 1. Merchant installs app and enables monitoring.
 2. Inventory webhooks + cron reconciliation update stock state.
@@ -99,15 +102,18 @@ shopify app dev
 5. Notification dispatcher sends and logs delivery status.
 6. Forecast service updates velocity, demand forecast, and reorder quantity.
 
-## Before deploying
+## Deployment Checklist
 
-- Set real production URLs in `shopify.app.toml`.
-- Ensure `SHOPIFY_APP_URL` is HTTPS (enforced by code in production).
-- Confirm cron caller sends `Authorization: Bearer <CRON_SECRET>`.
-- Confirm email credentials are valid.
+- Replace placeholder URLs in `shopify.app.toml` before deploy.
+- Use HTTPS production domain for `SHOPIFY_APP_URL`.
+- Set all required production env vars.
+- Use strong `CRON_SECRET` (minimum 24 chars).
+- Ensure cron caller sends `Authorization: Bearer <CRON_SECRET>`.
+- Verify email credentials.
+- Production startup performs fail-fast readiness checks and exits on invalid config.
 
-## Notes for contributors
+## Development Conventions
 
 - Keep business logic in `app/services/*`.
-- Keep route handlers thin; no heavy logic in route files.
-- Add tests for new threshold/alert/forecast behavior before merge.
+- Keep route handlers thin.
+- Add tests for threshold/alert/forecast logic changes.

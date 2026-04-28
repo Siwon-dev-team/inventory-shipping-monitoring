@@ -4,11 +4,13 @@ import type {
   LoaderFunctionArgs,
 } from "react-router";
 import { Form, useActionData, useLoaderData } from "react-router";
+import { MetricEventType } from "@prisma/client";
 import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import prisma from "../db.server";
 import { recomputeMerchantForecasts } from "../services/inventory/forecast.server";
 import { ensureMerchantSetup } from "../services/merchant-setup.server";
+import { getMerchantKpiSummary, recordMetricEvent } from "../services/metrics.server";
 import { syncInventoryFromShopify } from "../services/inventory/sync.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -26,6 +28,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const resolvedAlerts = await prisma.inventoryAlert.count({
     where: { merchantId: merchant.id, alertStatus: "RESOLVED" },
   });
+  const kpis = await getMerchantKpiSummary(merchant.id);
 
   return {
     merchant,
@@ -34,6 +37,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       activeAlerts,
       resolvedAlerts,
     },
+    kpis,
   };
 };
 
@@ -92,6 +96,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       schedulerIntervalMinutes: intervalMinutes,
     },
   });
+
+  if (monitoringEnabled) {
+    await recordMetricEvent({
+      merchantId: merchant.id,
+      eventType: MetricEventType.MONITORING_ENABLED,
+    });
+  }
 
   return { ok: true as const, synced: false as const };
 };
@@ -177,6 +188,21 @@ export default function Index() {
         </s-paragraph>
         <s-paragraph>
           Resolved alerts: <s-text>{data.metrics.resolvedAlerts}</s-text>
+        </s-paragraph>
+        <s-paragraph>
+          Monitoring activations:{" "}
+          <s-text>{data.kpis.monitoringEnabledCount}</s-text>
+        </s-paragraph>
+        <s-paragraph>
+          Alerts logged: <s-text>{data.kpis.alertCreatedCount}</s-text>
+        </s-paragraph>
+        <s-paragraph>
+          Avg alert-to-restock (hours):{" "}
+          <s-text>
+            {data.kpis.averageAlertToRestockHours
+              ? data.kpis.averageAlertToRestockHours.toFixed(2)
+              : "N/A"}
+          </s-text>
         </s-paragraph>
       </s-section>
 

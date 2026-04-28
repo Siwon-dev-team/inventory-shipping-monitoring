@@ -1,9 +1,11 @@
 import {
   AlertStatus,
+  MetricEventType,
   NotificationEvent,
   type AlertLevel,
 } from "@prisma/client";
 import prisma from "../../db.server";
+import { recordMetricEvent } from "../metrics.server";
 
 type EvaluateAlertInput = {
   merchantId: number;
@@ -34,6 +36,11 @@ export async function evaluateAlertLifecycle(input: EvaluateAlertInput) {
       return { changed: false, action: "none" as const };
     }
 
+    const latestActiveAlert = activeAlerts[0];
+    const resolutionHours = latestActiveAlert
+      ? (Date.now() - latestActiveAlert.createdAt.getTime()) / (1000 * 60 * 60)
+      : null;
+
     await prisma.inventoryAlert.updateMany({
       where: {
         id: {
@@ -43,6 +50,19 @@ export async function evaluateAlertLifecycle(input: EvaluateAlertInput) {
       data: {
         alertStatus: AlertStatus.RESOLVED,
         resolvedAt: new Date(),
+        currentQuantity: input.currentQuantity,
+      },
+    });
+
+    await recordMetricEvent({
+      merchantId: input.merchantId,
+      eventType: MetricEventType.ALERT_RESOLVED,
+      metricKey: latestActiveAlert?.alertLevel,
+      value: resolutionHours ?? undefined,
+      metadata: {
+        variantId: input.variantId,
+        productId: input.productId,
+        locationId: input.locationId ?? null,
         currentQuantity: input.currentQuantity,
       },
     });
@@ -100,6 +120,19 @@ export async function evaluateAlertLifecycle(input: EvaluateAlertInput) {
       alertLevel: input.alertLevel,
       triggerEvent: input.triggerEvent,
       alertStatus: AlertStatus.ACTIVE,
+    },
+  });
+
+  await recordMetricEvent({
+    merchantId: input.merchantId,
+    eventType: MetricEventType.ALERT_CREATED,
+    metricKey: input.alertLevel,
+    value: input.currentQuantity,
+    metadata: {
+      variantId: input.variantId,
+      productId: input.productId,
+      locationId: input.locationId ?? null,
+      thresholdValue: input.thresholdValue,
     },
   });
 
