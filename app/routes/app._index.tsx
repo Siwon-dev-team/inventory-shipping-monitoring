@@ -28,6 +28,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const resolvedAlerts = await prisma.inventoryAlert.count({
     where: { merchantId: merchant.id, alertStatus: "RESOLVED" },
   });
+  const recentAlerts = await prisma.inventoryAlert.findMany({
+    where: { merchantId: merchant.id },
+    include: { product: true, variant: true, location: true },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+  });
   const kpis = await getMerchantKpiSummary(merchant.id);
 
   return {
@@ -37,6 +43,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       activeAlerts,
       resolvedAlerts,
     },
+    recentAlerts,
     kpis,
   };
 };
@@ -223,6 +230,39 @@ export default function Index() {
         <s-paragraph>
           <s-link href="/app/forecasting">Forecast and reorder</s-link>
         </s-paragraph>
+      </s-section>
+
+      <s-section heading="Recent alerts">
+        {data.recentAlerts.length === 0 ? (
+          <s-paragraph>No alerts yet.</s-paragraph>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Level</th>
+                <th>Product</th>
+                <th>SKU</th>
+                <th>Qty</th>
+                <th>Status</th>
+                <th>Location</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.recentAlerts.map((alert) => (
+                <tr key={alert.id}>
+                  <td>{alert.alertLevel}</td>
+                  <td>{alert.product.title}</td>
+                  <td>{alert.variant.sku || "No SKU"}</td>
+                  <td>{alert.currentQuantity}</td>
+                  <td>{alert.alertStatus}</td>
+                  <td>{alert.location?.name ?? "-"}</td>
+                  <td>{new Date(alert.createdAt).toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </s-section>
     </s-page>
   );

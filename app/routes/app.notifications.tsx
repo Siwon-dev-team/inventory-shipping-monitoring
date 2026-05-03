@@ -27,20 +27,41 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     orderBy: [{ event: "asc" }, { channel: "asc" }],
   });
 
-  return { merchantId: merchant.id, flows };
+  return {
+    merchantId: merchant.id,
+    contactEmail: merchant.contactEmail,
+    hasFallbackRecipient: Boolean(process.env.ALERT_EMAIL_TO),
+    flows,
+  };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const merchant = await ensureMerchantSetup(session.shop);
   const formData = await request.formData();
+  const actionType = String(formData.get("actionType") ?? "flow");
+
+  if (actionType === "contact_email") {
+    const contactEmailRaw = String(formData.get("contactEmail") ?? "").trim();
+    const contactEmail = contactEmailRaw.length > 0 ? contactEmailRaw : null;
+    if (contactEmail && !contactEmail.includes("@")) {
+      return { ok: false as const, message: "Please enter a valid email address." };
+    }
+
+    await prisma.merchant.update({
+      where: { id: merchant.id },
+      data: { contactEmail },
+    });
+
+    return { ok: true as const, message: "Email recipient saved." };
+  }
 
   const event = String(formData.get("event")) as NotificationEvent;
   const channel = String(formData.get("channel")) as NotificationChannel;
   const enabled = formData.get("enabled") === "on";
 
   if (!EVENTS.includes(event) || !CHANNELS.includes(channel)) {
-    return { ok: false };
+    return { ok: false as const, message: "Invalid event or channel." };
   }
 
   await prisma.notificationFlow.upsert({
@@ -60,7 +81,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     },
   });
 
-  return { ok: true };
+  return { ok: true as const, message: "Flow updated." };
 };
 
 function isEnabled(
@@ -72,15 +93,38 @@ function isEnabled(
 }
 
 export default function NotificationsPage() {
-  const { flows } = useLoaderData<typeof loader>();
+  const { flows, contactEmail, hasFallbackRecipient } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
 
   return (
     <s-page heading="Notification Flow Configuration">
+      <s-section heading="Email recipient">
+        <s-paragraph>
+          Alerts are sent to merchant email first. If empty, the app falls back to
+          the environment recipient.
+        </s-paragraph>
+        <Form method="post">
+          <input type="hidden" name="actionType" value="contact_email" />
+          <s-stack direction="inline" gap="base">
+            <s-text-field
+              name="contactEmail"
+              label="Recipient email"
+              value={contactEmail ?? ""}
+            />
+            <s-button type="submit" variant="primary">
+              Save email
+            </s-button>
+          </s-stack>
+        </Form>
+        <s-paragraph>
+          Fallback `ALERT_EMAIL_TO`: {hasFallbackRecipient ? "Configured" : "Not configured"}
+        </s-paragraph>
+      </s-section>
+
       <s-section heading="Event channel matrix">
-        {actionData?.ok ? (
+        {actionData ? (
           <s-paragraph>
-            <s-text>Flow updated.</s-text>
+            <s-text>{actionData.message}</s-text>
           </s-paragraph>
         ) : null}
         <s-stack direction="block" gap="base">
@@ -90,6 +134,7 @@ export default function NotificationsPage() {
               <s-stack direction="inline" gap="base">
                 {CHANNELS.map((channel) => (
                   <Form key={`${event}-${channel}`} method="post">
+                    <input type="hidden" name="actionType" value="flow" />
                     <input type="hidden" name="event" value={event} />
                     <input type="hidden" name="channel" value={channel} />
                     <s-checkbox

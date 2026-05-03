@@ -84,27 +84,40 @@ export default function ForecastingPage() {
         {rows.length === 0 ? (
           <s-paragraph>No synced sales data yet.</s-paragraph>
         ) : (
-          <s-stack direction="block" gap="base">
-            {rows.map((row) => (
-              <s-box key={row.variantId} borderWidth="base" borderRadius="base" padding="base">
-                <s-paragraph>
-                  {row.title} ({row.sku || "No SKU"})
-                </s-paragraph>
-                <s-paragraph>
-                  Velocity 7d: {row.salesVelocity7d} | Velocity 30d: {row.salesVelocity30d}
-                </s-paragraph>
-                <s-paragraph>
-                  Forecast daily: {row.forecastDaily} | 7d: {row.forecast7d} | 30d: {row.forecast30d}
-                </s-paragraph>
-                <s-paragraph>
-                  Inventory: {row.inventoryQuantity} |{" "}
-                  {row.reorderSuggestionQty > 0
-                    ? `Reorder suggestion: ${row.reorderSuggestionQty}`
-                    : "No reorder needed"}
-                </s-paragraph>
-              </s-box>
-            ))}
-          </s-stack>
+          <table>
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>SKU</th>
+                <th>Inventory</th>
+                <th>Velocity 7d</th>
+                <th>Velocity 30d</th>
+                <th>Forecast daily</th>
+                <th>Forecast 7d</th>
+                <th>Forecast 30d</th>
+                <th>Reorder</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.variantId}>
+                  <td>{row.title}</td>
+                  <td>{row.sku || "No SKU"}</td>
+                  <td>{row.inventoryQuantity}</td>
+                  <td>{row.salesVelocity7d.toFixed(2)}</td>
+                  <td>{row.salesVelocity30d.toFixed(2)}</td>
+                  <td>{row.forecastDaily.toFixed(2)}</td>
+                  <td>{row.forecast7d.toFixed(2)}</td>
+                  <td>{row.forecast30d.toFixed(2)}</td>
+                  <td>
+                    {row.reorderSuggestionQty > 0
+                      ? row.reorderSuggestionQty
+                      : "No reorder needed"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </s-section>
     </s-page>

@@ -23,6 +23,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return { alerts };
 };
 
+function getAlertBadge(level: string) {
+  if (level === "OUT_OF_STOCK" || level === "CRITICAL") {
+    return <span style={{ background: "#fecaca", color: "#7f1d1d", padding: "2px 8px", borderRadius: "999px", fontWeight: 600 }}>{level}</span>;
+  }
+  if (level === "LOW") {
+    return <span style={{ background: "#fef3c7", color: "#78350f", padding: "2px 8px", borderRadius: "999px", fontWeight: 600 }}>{level}</span>;
+  }
+  return <span>{level}</span>;
+}
+
 export default function AlertsPage() {
   const { alerts } = useLoaderData<typeof loader>();
   const active = alerts.filter((item) => item.alertStatus === AlertStatus.ACTIVE);
@@ -43,22 +53,34 @@ export default function AlertsPage() {
         {alerts.length === 0 ? (
           <s-paragraph>No alerts yet.</s-paragraph>
         ) : (
-          <s-stack direction="block" gap="base">
-            {alerts.map((alert) => (
-              <s-box key={alert.id} borderWidth="base" borderRadius="base" padding="base">
-                <s-paragraph>
-                  <s-text>{alert.alertLevel}</s-text> - {alert.product.title} ({alert.variant.sku || "No SKU"})
-                </s-paragraph>
-                <s-paragraph>
-                  Qty: {alert.currentQuantity}, Threshold: {alert.thresholdValue}
-                </s-paragraph>
-                <s-paragraph>
-                  Status: {alert.alertStatus}
-                  {alert.location ? `, Location: ${alert.location.name}` : ""}
-                </s-paragraph>
-              </s-box>
-            ))}
-          </s-stack>
+          <table>
+            <thead>
+              <tr>
+                <th>Level</th>
+                <th>Product</th>
+                <th>SKU</th>
+                <th>Qty</th>
+                <th>Threshold</th>
+                <th>Status</th>
+                <th>Location</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {alerts.map((alert) => (
+                <tr key={alert.id}>
+                  <td>{getAlertBadge(alert.alertLevel)}</td>
+                  <td>{alert.product.title}</td>
+                  <td>{alert.variant.sku || "No SKU"}</td>
+                  <td>{alert.currentQuantity}</td>
+                  <td>{alert.thresholdValue}</td>
+                  <td>{alert.alertStatus}</td>
+                  <td>{alert.location?.name ?? "-"}</td>
+                  <td>{new Date(alert.createdAt).toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </s-section>
     </s-page>
