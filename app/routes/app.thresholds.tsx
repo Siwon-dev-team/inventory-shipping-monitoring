@@ -1,10 +1,26 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { Form, useActionData, useLoaderData } from "react-router";
+import {
+  Badge,
+  BlockStack,
+  Button,
+  Card,
+  IndexTable,
+  InlineStack,
+  Pagination,
+  Select,
+  Text,
+  TextField,
+} from "@shopify/polaris";
 import prisma from "../db.server";
 import { authenticate } from "../shopify.server";
 import { ensureMerchantSetup } from "../services/merchant-setup.server";
+import { useState } from "react";
 
 type ThresholdTargetType = "variant" | "product" | "location";
+const PAGE_SIZE_MIN = 50;
+const PAGE_SIZE_MAX = 100;
+const DEFAULT_PAGE_SIZE = 50;
 
 type SelectedTarget = {
   targetType: ThresholdTargetType;
@@ -14,18 +30,34 @@ type SelectedTarget = {
   criticalThreshold: number | null;
 };
 
+function normalizeScope(scope: string | null): ThresholdTargetType {
+  if (scope === "product" || scope === "location") {
+    return scope;
+  }
+  return "variant";
+}
+
+function clampPageSize(input: number) {
+  if (!Number.isFinite(input)) return DEFAULT_PAGE_SIZE;
+  return Math.min(PAGE_SIZE_MAX, Math.max(PAGE_SIZE_MIN, Math.floor(input)));
+}
+
+function formatThreshold(value: number | null, tone: "warning" | "critical") {
+  if (value === null) return "-";
+  return <Badge tone={tone}>{String(value)}</Badge>;
+}
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const merchant = await ensureMerchantSetup(session.shop);
   const url = new URL(request.url);
   const query = (url.searchParams.get("q") ?? "").trim();
-  const scope = (url.searchParams.get("scope") ?? "all").toLowerCase();
+  const scope = normalizeScope(url.searchParams.get("scope"));
+  const page = Math.max(1, Number(url.searchParams.get("page") ?? "1") || 1);
+  const pageSize = clampPageSize(Number(url.searchParams.get("pageSize") ?? DEFAULT_PAGE_SIZE));
   const editType = (url.searchParams.get("editType") ?? "").toLowerCase();
   const editId = Number(url.searchParams.get("editId"));
-
-  const includeVariant = scope === "all" || scope === "variant";
-  const includeProduct = scope === "all" || scope === "product";
-  const includeLocation = scope === "all" || scope === "location";
+  const skip = (page - 1) * pageSize;
 
   const queryFilter = query
     ? {
@@ -40,8 +72,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       }
     : {};
 
-  const variants = includeVariant
-    ? await prisma.variant.findMany({
+  const variants =
+    scope === "variant"
+      ? await prisma.variant.findMany({
         where: {
           merchantId: merchant.id,
           ...queryFilter,
@@ -50,12 +83,23 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           product: true,
         },
         orderBy: { updatedAt: "desc" },
-        take: 100,
+        skip,
+        take: pageSize,
       })
-    : [];
+      : [];
+  const variantCount =
+    scope === "variant"
+      ? await prisma.variant.count({
+        where: {
+          merchantId: merchant.id,
+          ...queryFilter,
+        },
+      })
+      : 0;
 
-  const products = includeProduct
-    ? await prisma.product.findMany({
+  const products =
+    scope === "product"
+      ? await prisma.product.findMany({
         where: {
           merchantId: merchant.id,
           ...(query
@@ -65,12 +109,27 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             : {}),
         },
         orderBy: { updatedAt: "desc" },
-        take: 100,
+        skip,
+        take: pageSize,
       })
-    : [];
+      : [];
+  const productCount =
+    scope === "product"
+      ? await prisma.product.count({
+        where: {
+          merchantId: merchant.id,
+          ...(query
+            ? {
+                title: { contains: query },
+              }
+            : {}),
+        },
+      })
+      : 0;
 
-  const locations = includeLocation
-    ? await prisma.location.findMany({
+  const locations =
+    scope === "location"
+      ? await prisma.location.findMany({
         where: {
           merchantId: merchant.id,
           ...(query
@@ -80,9 +139,23 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             : {}),
         },
         orderBy: { updatedAt: "desc" },
-        take: 100,
+        skip,
+        take: pageSize,
       })
-    : [];
+      : [];
+  const locationCount =
+    scope === "location"
+      ? await prisma.location.count({
+        where: {
+          merchantId: merchant.id,
+          ...(query
+            ? {
+                name: { contains: query },
+              }
+            : {}),
+        },
+      })
+      : 0;
 
   let selectedTarget: SelectedTarget | null = null;
 
@@ -128,7 +201,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
   }
 
-  return { variants, products, locations, query, scope, selectedTarget };
+  const totalCount =
+    scope === "variant" ? variantCount : scope === "product" ? productCount : locationCount;
+
+  return {
+    variants,
+    products,
+    locations,
+    query,
+    scope,
+    page,
+    pageSize,
+    totalCount,
+    hasPreviousPage: page > 1,
+    hasNextPage: page * pageSize < totalCount,
+    selectedTarget,
+  };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -189,9 +277,45 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function ThresholdsPage() {
-  const { variants, products, locations, query, scope, selectedTarget } =
-    useLoaderData<typeof loader>();
+  const {
+    variants,
+    products,
+    locations,
+    query,
+    scope,
+    page,
+    pageSize,
+    totalCount,
+    hasPreviousPage,
+    hasNextPage,
+    selectedTarget,
+  } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
+  const [queryValue, setQueryValue] = useState(query);
+  const [scopeValue, setScopeValue] = useState(scope);
+  const [pageSizeValue, setPageSizeValue] = useState(String(pageSize));
+
+  function buildThresholdEditUrl(editType: ThresholdTargetType, editId: number) {
+    const params = new URLSearchParams({
+      q: query,
+      scope,
+      page: String(page),
+      pageSize: String(pageSize),
+      editType,
+      editId: String(editId),
+    });
+    return `/app/thresholds?${params.toString()}`;
+  }
+
+  function buildPageUrl(nextPage: number) {
+    const params = new URLSearchParams({
+      q: query,
+      scope,
+      page: String(nextPage),
+      pageSize: String(pageSize),
+    });
+    return `/app/thresholds?${params.toString()}`;
+  }
 
   return (
     <s-page heading="Threshold Configuration">
@@ -200,19 +324,55 @@ export default function ThresholdsPage() {
           Threshold priority: Variant - Product - Location - Global
         </s-paragraph>
         <Form method="get">
-          <s-stack direction="inline" gap="base">
-            <s-text-field name="q" label="Search by title, SKU, or location" value={query} />
-            <label>
-              Scope
-              <select name="scope" defaultValue={scope}>
-                <option value="all">All</option>
-                <option value="variant">Variant</option>
-                <option value="product">Product</option>
-                <option value="location">Location</option>
-              </select>
-            </label>
-            <s-button type="submit">Apply filter</s-button>
-          </s-stack>
+          <Card>
+            <BlockStack gap="400">
+              <InlineStack align="start" gap="400" blockAlign="end" wrap>
+                <input type="hidden" name="page" value="1" />
+                <div style={{ minWidth: "280px" }}>
+                  <TextField
+                    label="Search"
+                    name="q"
+                    value={queryValue}
+                    onChange={setQueryValue}
+                    autoComplete="off"
+                    placeholder="Search by title, SKU, or location"
+                  />
+                </div>
+                <div style={{ minWidth: "200px" }}>
+                  <Select
+                    label="Scope"
+                    name="scope"
+                    options={[
+                      { label: "Variant", value: "variant" },
+                      { label: "Product", value: "product" },
+                      { label: "Location", value: "location" },
+                    ]}
+                    value={scopeValue}
+                    onChange={(value) => setScopeValue(normalizeScope(value))}
+                  />
+                </div>
+                <div style={{ minWidth: "160px" }}>
+                  <Select
+                    label="Rows per page"
+                    name="pageSize"
+                    options={[
+                      { label: "50", value: "50" },
+                      { label: "75", value: "75" },
+                      { label: "100", value: "100" },
+                    ]}
+                    value={pageSizeValue}
+                    onChange={setPageSizeValue}
+                  />
+                </div>
+                <Button submit variant="primary">
+                  Apply filters
+                </Button>
+              </InlineStack>
+              <Text as="p" variant="bodySm" tone="subdued">
+                {totalCount} result(s) found. Page {page}, limit {pageSize} rows.
+              </Text>
+            </BlockStack>
+          </Card>
         </Form>
       </s-section>
 
@@ -226,6 +386,9 @@ export default function ThresholdsPage() {
           <s-box borderWidth="base" borderRadius="base" padding="base">
             <s-paragraph>
               Editing: <s-text>{selectedTarget.label}</s-text>
+            </s-paragraph>
+            <s-paragraph>
+              <Badge tone="info">{selectedTarget.targetType.toUpperCase()}</Badge>
             </s-paragraph>
             <Form method="post">
               <input type="hidden" name="targetType" value={selectedTarget.targetType} />
@@ -264,116 +427,135 @@ export default function ThresholdsPage() {
       </s-section>
 
       <s-section heading="Variant thresholds">
-        {variants.length === 0 ? (
+        {scope !== "variant" ? (
+          <s-paragraph>Switch scope to Variant to view this table.</s-paragraph>
+        ) : variants.length === 0 ? (
           <s-paragraph>No variants matched your filter.</s-paragraph>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th>SKU</th>
-                <th>Low</th>
-                <th>Critical</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {variants.map((variant) => (
-                <tr key={variant.id}>
-                  <td>{variant.product.title}</td>
-                  <td>{variant.sku || "No SKU"}</td>
-                  <td>{variant.lowThreshold ?? "-"}</td>
-                  <td>{variant.criticalThreshold ?? "-"}</td>
-                  <td>
-                    <Form method="get">
-                      <input type="hidden" name="q" value={query} />
-                      <input type="hidden" name="scope" value={scope} />
-                      <input type="hidden" name="editType" value="variant" />
-                      <input type="hidden" name="editId" value={variant.id} />
-                      <s-button type="submit" variant="tertiary">
-                        Set threshold
-                      </s-button>
-                    </Form>
-                  </td>
-                </tr>
+          <Card>
+            <IndexTable
+              resourceName={{ singular: "variant threshold", plural: "variant thresholds" }}
+              itemCount={variants.length}
+              selectable={false}
+              headings={[
+                { title: "Product" },
+                { title: "SKU" },
+                { title: "Low" },
+                { title: "Critical" },
+                { title: "Action" },
+              ]}
+            >
+              {variants.map((variant, index) => (
+                <IndexTable.Row id={`variant-${variant.id}`} key={variant.id} position={index}>
+                  <IndexTable.Cell>{variant.product.title}</IndexTable.Cell>
+                  <IndexTable.Cell>{variant.sku || "No SKU"}</IndexTable.Cell>
+                  <IndexTable.Cell>{formatThreshold(variant.lowThreshold, "warning")}</IndexTable.Cell>
+                  <IndexTable.Cell>
+                    {formatThreshold(variant.criticalThreshold, "critical")}
+                  </IndexTable.Cell>
+                  <IndexTable.Cell>
+                    <Button url={buildThresholdEditUrl("variant", variant.id)} size="slim">
+                      Set threshold
+                    </Button>
+                  </IndexTable.Cell>
+                </IndexTable.Row>
               ))}
-            </tbody>
-          </table>
+            </IndexTable>
+          </Card>
         )}
       </s-section>
 
       <s-section heading="Product thresholds">
-        {products.length === 0 ? (
+        {scope !== "product" ? (
+          <s-paragraph>Switch scope to Product to view this table.</s-paragraph>
+        ) : products.length === 0 ? (
           <s-paragraph>No products matched your filter.</s-paragraph>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th>Low</th>
-                <th>Critical</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {products.map((product) => (
-                <tr key={product.id}>
-                  <td>{product.title}</td>
-                  <td>{product.lowThreshold ?? "-"}</td>
-                  <td>{product.criticalThreshold ?? "-"}</td>
-                  <td>
-                    <Form method="get">
-                      <input type="hidden" name="q" value={query} />
-                      <input type="hidden" name="scope" value={scope} />
-                      <input type="hidden" name="editType" value="product" />
-                      <input type="hidden" name="editId" value={product.id} />
-                      <s-button type="submit" variant="tertiary">
-                        Set threshold
-                      </s-button>
-                    </Form>
-                  </td>
-                </tr>
+          <Card>
+            <IndexTable
+              resourceName={{ singular: "product threshold", plural: "product thresholds" }}
+              itemCount={products.length}
+              selectable={false}
+              headings={[
+                { title: "Product" },
+                { title: "Low" },
+                { title: "Critical" },
+                { title: "Action" },
+              ]}
+            >
+              {products.map((product, index) => (
+                <IndexTable.Row id={`product-${product.id}`} key={product.id} position={index}>
+                  <IndexTable.Cell>{product.title}</IndexTable.Cell>
+                  <IndexTable.Cell>{formatThreshold(product.lowThreshold, "warning")}</IndexTable.Cell>
+                  <IndexTable.Cell>
+                    {formatThreshold(product.criticalThreshold, "critical")}
+                  </IndexTable.Cell>
+                  <IndexTable.Cell>
+                    <Button url={buildThresholdEditUrl("product", product.id)} size="slim">
+                      Set threshold
+                    </Button>
+                  </IndexTable.Cell>
+                </IndexTable.Row>
               ))}
-            </tbody>
-          </table>
+            </IndexTable>
+          </Card>
         )}
       </s-section>
 
       <s-section heading="Location thresholds">
-        {locations.length === 0 ? (
+        {scope !== "location" ? (
+          <s-paragraph>Switch scope to Location to view this table.</s-paragraph>
+        ) : locations.length === 0 ? (
           <s-paragraph>No locations matched your filter.</s-paragraph>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Location</th>
-                <th>Low</th>
-                <th>Critical</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {locations.map((location) => (
-                <tr key={location.id}>
-                  <td>{location.name}</td>
-                  <td>{location.lowThreshold ?? "-"}</td>
-                  <td>{location.criticalThreshold ?? "-"}</td>
-                  <td>
-                    <Form method="get">
-                      <input type="hidden" name="q" value={query} />
-                      <input type="hidden" name="scope" value={scope} />
-                      <input type="hidden" name="editType" value="location" />
-                      <input type="hidden" name="editId" value={location.id} />
-                      <s-button type="submit" variant="tertiary">
-                        Set threshold
-                      </s-button>
-                    </Form>
-                  </td>
-                </tr>
+          <Card>
+            <IndexTable
+              resourceName={{ singular: "location threshold", plural: "location thresholds" }}
+              itemCount={locations.length}
+              selectable={false}
+              headings={[
+                { title: "Location" },
+                { title: "Low" },
+                { title: "Critical" },
+                { title: "Action" },
+              ]}
+            >
+              {locations.map((location, index) => (
+                <IndexTable.Row id={`location-${location.id}`} key={location.id} position={index}>
+                  <IndexTable.Cell>{location.name}</IndexTable.Cell>
+                  <IndexTable.Cell>{formatThreshold(location.lowThreshold, "warning")}</IndexTable.Cell>
+                  <IndexTable.Cell>
+                    {formatThreshold(location.criticalThreshold, "critical")}
+                  </IndexTable.Cell>
+                  <IndexTable.Cell>
+                    <Button url={buildThresholdEditUrl("location", location.id)} size="slim">
+                      Set threshold
+                    </Button>
+                  </IndexTable.Cell>
+                </IndexTable.Row>
               ))}
-            </tbody>
-          </table>
+            </IndexTable>
+          </Card>
         )}
+      </s-section>
+      <s-section heading="Pagination">
+        <Card>
+          <BlockStack gap="300">
+            <Pagination
+              hasPrevious={hasPreviousPage}
+              hasNext={hasNextPage}
+              onPrevious={() => {
+                window.location.href = buildPageUrl(page - 1);
+              }}
+              onNext={() => {
+                window.location.href = buildPageUrl(page + 1);
+              }}
+            />
+            <Text as="p" variant="bodySm" tone="subdued">
+              Showing page {page} of {Math.max(1, Math.ceil(totalCount / pageSize))}
+            </Text>
+          </BlockStack>
+        </Card>
       </s-section>
     </s-page>
   );

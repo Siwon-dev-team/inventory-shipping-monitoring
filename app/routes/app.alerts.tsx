@@ -1,6 +1,7 @@
 import { AlertStatus } from "@prisma/client";
 import type { LoaderFunctionArgs } from "react-router";
 import { useLoaderData } from "react-router";
+import { Badge, Card, IndexTable } from "@shopify/polaris";
 import prisma from "../db.server";
 import { authenticate } from "../shopify.server";
 import { ensureMerchantSetup } from "../services/merchant-setup.server";
@@ -17,7 +18,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       location: true,
     },
     orderBy: { createdAt: "desc" },
-    take: 100,
+    take: 50,
   });
 
   return { alerts };
@@ -25,12 +26,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 function getAlertBadge(level: string) {
   if (level === "OUT_OF_STOCK" || level === "CRITICAL") {
-    return <span style={{ background: "#fecaca", color: "#7f1d1d", padding: "2px 8px", borderRadius: "999px", fontWeight: 600 }}>{level}</span>;
+    return <Badge tone="critical">{level}</Badge>;
   }
   if (level === "LOW") {
-    return <span style={{ background: "#fef3c7", color: "#78350f", padding: "2px 8px", borderRadius: "999px", fontWeight: 600 }}>{level}</span>;
+    return <Badge tone="warning">{level}</Badge>;
   }
-  return <span>{level}</span>;
+  return <Badge>{level}</Badge>;
 }
 
 export default function AlertsPage() {
@@ -53,35 +54,38 @@ export default function AlertsPage() {
         {alerts.length === 0 ? (
           <s-paragraph>No alerts yet.</s-paragraph>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Level</th>
-                <th>Product</th>
-                <th>SKU</th>
-                <th>Qty</th>
-                <th>Threshold</th>
-                <th>Status</th>
-                <th>Location</th>
-                <th>Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {alerts.map((alert) => (
-                <tr key={alert.id}>
-                  <td>{getAlertBadge(alert.alertLevel)}</td>
-                  <td>{alert.product.title}</td>
-                  <td>{alert.variant.sku || "No SKU"}</td>
-                  <td>{alert.currentQuantity}</td>
-                  <td>{alert.thresholdValue}</td>
-                  <td>{alert.alertStatus}</td>
-                  <td>{alert.location?.name ?? "-"}</td>
-                  <td>{new Date(alert.createdAt).toLocaleString()}</td>
-                </tr>
+          <Card>
+            <IndexTable
+              resourceName={{ singular: "alert", plural: "alerts" }}
+              itemCount={alerts.length}
+              selectable={false}
+              headings={[
+                { title: "Level" },
+                { title: "Product" },
+                { title: "SKU" },
+                { title: "Qty" },
+                { title: "Threshold" },
+                { title: "Status" },
+                { title: "Location" },
+                { title: "Created" },
+              ]}
+            >
+              {alerts.map((alert, index) => (
+                <IndexTable.Row id={`alert-${alert.id}`} key={alert.id} position={index}>
+                  <IndexTable.Cell>{getAlertBadge(alert.alertLevel)}</IndexTable.Cell>
+                  <IndexTable.Cell>{alert.product.title}</IndexTable.Cell>
+                  <IndexTable.Cell>{alert.variant.sku || "No SKU"}</IndexTable.Cell>
+                  <IndexTable.Cell>{alert.currentQuantity}</IndexTable.Cell>
+                  <IndexTable.Cell>{alert.thresholdValue}</IndexTable.Cell>
+                  <IndexTable.Cell>{alert.alertStatus}</IndexTable.Cell>
+                  <IndexTable.Cell>{alert.location?.name ?? "-"}</IndexTable.Cell>
+                  <IndexTable.Cell>{new Date(alert.createdAt).toLocaleString()}</IndexTable.Cell>
+                </IndexTable.Row>
               ))}
-            </tbody>
-          </table>
+            </IndexTable>
+          </Card>
         )}
+        <s-paragraph>Showing latest 50 alerts.</s-paragraph>
       </s-section>
     </s-page>
   );

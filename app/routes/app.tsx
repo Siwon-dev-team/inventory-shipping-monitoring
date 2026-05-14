@@ -2,8 +2,12 @@ import process from "node:process";
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { Outlet, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import { AppProvider } from "@shopify/shopify-app-react-router/react";
+import { AppProvider as ShopifyAppProvider } from "@shopify/shopify-app-react-router/react";
 import { NavMenu } from "@shopify/app-bridge-react";
+import {
+  AppProvider as PolarisAppProvider,
+} from "@shopify/polaris";
+import enTranslations from "@shopify/polaris/locales/en.json";
 
 import { authenticate } from "../shopify.server";
 import { ensureMerchantSetup } from "../services/merchant-setup.server";
@@ -19,16 +23,18 @@ export default function App() {
   const { apiKey } = useLoaderData<typeof loader>();
 
   return (
-    <AppProvider embedded apiKey={apiKey}>
-      <NavMenu>
-        <a href="/app">Dashboard</a>
-        <a href="/app/alerts">Alerts</a>
-        <a href="/app/thresholds">Thresholds</a>
-        <a href="/app/forecasting">Forecasting</a>
-        <a href="/app/notifications">Notifications</a>
-      </NavMenu>
-      <Outlet />
-    </AppProvider>
+    <ShopifyAppProvider embedded apiKey={apiKey}>
+      <PolarisAppProvider i18n={enTranslations}>
+        <NavMenu>
+          <a href="/app">Dashboard</a>
+          <a href="/app/alerts">Alerts</a>
+          <a href="/app/thresholds">Thresholds</a>
+          <a href="/app/forecasting">Forecasting</a>
+          <a href="/app/notifications">Notifications</a>
+        </NavMenu>
+        <Outlet />
+      </PolarisAppProvider>
+    </ShopifyAppProvider>
   );
 }
 

@@ -5,6 +5,7 @@ import type {
 } from "react-router";
 import { Form, useActionData, useLoaderData } from "react-router";
 import { MetricEventType } from "@prisma/client";
+import { Badge, Card, IndexTable } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import prisma from "../db.server";
@@ -236,32 +237,42 @@ export default function Index() {
         {data.recentAlerts.length === 0 ? (
           <s-paragraph>No alerts yet.</s-paragraph>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Level</th>
-                <th>Product</th>
-                <th>SKU</th>
-                <th>Qty</th>
-                <th>Status</th>
-                <th>Location</th>
-                <th>Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.recentAlerts.map((alert) => (
-                <tr key={alert.id}>
-                  <td>{alert.alertLevel}</td>
-                  <td>{alert.product.title}</td>
-                  <td>{alert.variant.sku || "No SKU"}</td>
-                  <td>{alert.currentQuantity}</td>
-                  <td>{alert.alertStatus}</td>
-                  <td>{alert.location?.name ?? "-"}</td>
-                  <td>{new Date(alert.createdAt).toLocaleString()}</td>
-                </tr>
+          <Card>
+            <IndexTable
+              resourceName={{ singular: "alert", plural: "alerts" }}
+              itemCount={data.recentAlerts.length}
+              selectable={false}
+              headings={[
+                { title: "Level" },
+                { title: "Product" },
+                { title: "SKU" },
+                { title: "Qty" },
+                { title: "Status" },
+                { title: "Location" },
+                { title: "Created" },
+              ]}
+            >
+              {data.recentAlerts.map((alert, index) => (
+                <IndexTable.Row id={`dashboard-alert-${alert.id}`} key={alert.id} position={index}>
+                  <IndexTable.Cell>
+                    {alert.alertLevel === "OUT_OF_STOCK" || alert.alertLevel === "CRITICAL" ? (
+                      <Badge tone="critical">{alert.alertLevel}</Badge>
+                    ) : alert.alertLevel === "LOW" ? (
+                      <Badge tone="warning">{alert.alertLevel}</Badge>
+                    ) : (
+                      <Badge>{alert.alertLevel}</Badge>
+                    )}
+                  </IndexTable.Cell>
+                  <IndexTable.Cell>{alert.product.title}</IndexTable.Cell>
+                  <IndexTable.Cell>{alert.variant.sku || "No SKU"}</IndexTable.Cell>
+                  <IndexTable.Cell>{alert.currentQuantity}</IndexTable.Cell>
+                  <IndexTable.Cell>{alert.alertStatus}</IndexTable.Cell>
+                  <IndexTable.Cell>{alert.location?.name ?? "-"}</IndexTable.Cell>
+                  <IndexTable.Cell>{new Date(alert.createdAt).toLocaleString()}</IndexTable.Cell>
+                </IndexTable.Row>
               ))}
-            </tbody>
-          </table>
+            </IndexTable>
+          </Card>
         )}
       </s-section>
     </s-page>

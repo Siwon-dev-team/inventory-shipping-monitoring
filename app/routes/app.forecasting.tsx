@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { Form, useActionData, useLoaderData } from "react-router";
+import { Card, IndexTable } from "@shopify/polaris";
 import prisma from "../db.server";
 import { authenticate } from "../shopify.server";
 import { recomputeMerchantForecasts } from "../services/inventory/forecast.server";
@@ -30,7 +31,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const variants = await prisma.variant.findMany({
     where: { merchantId: merchant.id },
     include: { product: true },
-    take: 200,
+    take: 50,
     orderBy: { updatedAt: "desc" },
   });
 
@@ -84,41 +85,44 @@ export default function ForecastingPage() {
         {rows.length === 0 ? (
           <s-paragraph>No synced sales data yet.</s-paragraph>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th>SKU</th>
-                <th>Inventory</th>
-                <th>Velocity 7d</th>
-                <th>Velocity 30d</th>
-                <th>Forecast daily</th>
-                <th>Forecast 7d</th>
-                <th>Forecast 30d</th>
-                <th>Reorder</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.variantId}>
-                  <td>{row.title}</td>
-                  <td>{row.sku || "No SKU"}</td>
-                  <td>{row.inventoryQuantity}</td>
-                  <td>{row.salesVelocity7d.toFixed(2)}</td>
-                  <td>{row.salesVelocity30d.toFixed(2)}</td>
-                  <td>{row.forecastDaily.toFixed(2)}</td>
-                  <td>{row.forecast7d.toFixed(2)}</td>
-                  <td>{row.forecast30d.toFixed(2)}</td>
-                  <td>
+          <Card>
+            <IndexTable
+              resourceName={{ singular: "variant insight", plural: "variant insights" }}
+              itemCount={rows.length}
+              selectable={false}
+              headings={[
+                { title: "Product" },
+                { title: "SKU" },
+                { title: "Inventory" },
+                { title: "Velocity 7d" },
+                { title: "Velocity 30d" },
+                { title: "Forecast daily" },
+                { title: "Forecast 7d" },
+                { title: "Forecast 30d" },
+                { title: "Reorder" },
+              ]}
+            >
+              {rows.map((row, index) => (
+                <IndexTable.Row id={`forecast-${row.variantId}`} key={row.variantId} position={index}>
+                  <IndexTable.Cell>{row.title}</IndexTable.Cell>
+                  <IndexTable.Cell>{row.sku || "No SKU"}</IndexTable.Cell>
+                  <IndexTable.Cell>{row.inventoryQuantity}</IndexTable.Cell>
+                  <IndexTable.Cell>{row.salesVelocity7d.toFixed(2)}</IndexTable.Cell>
+                  <IndexTable.Cell>{row.salesVelocity30d.toFixed(2)}</IndexTable.Cell>
+                  <IndexTable.Cell>{row.forecastDaily.toFixed(2)}</IndexTable.Cell>
+                  <IndexTable.Cell>{row.forecast7d.toFixed(2)}</IndexTable.Cell>
+                  <IndexTable.Cell>{row.forecast30d.toFixed(2)}</IndexTable.Cell>
+                  <IndexTable.Cell>
                     {row.reorderSuggestionQty > 0
                       ? row.reorderSuggestionQty
                       : "No reorder needed"}
-                  </td>
-                </tr>
+                  </IndexTable.Cell>
+                </IndexTable.Row>
               ))}
-            </tbody>
-          </table>
+            </IndexTable>
+          </Card>
         )}
+        <s-paragraph>Showing latest 50 variants.</s-paragraph>
       </s-section>
     </s-page>
   );
