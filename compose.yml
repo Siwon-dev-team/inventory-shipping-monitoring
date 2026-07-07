@@ -1,0 +1,18 @@
+services:
+  app:
+    container_name: inventory-shipping-monitoring
+    build:
+      context: .
+    ports:
+      - "3010:3000"
+    env_file:
+      - .env
+    environment:
+      SHOPIFY_APP_URL: "https://inventorymanagement.spfmktplace.tech.siwon.ca"
+      DATABASE_URL: "file:dev.sqlite"
+    volumes:
+      - db_data:/app/prisma
+    restart: unless-stopped
+
+volumes:
+  db_data:

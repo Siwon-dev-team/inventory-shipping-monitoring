@@ -14,8 +14,6 @@ const EVENTS = [
 
 const CHANNELS = [
   NotificationChannel.EMAIL,
-  NotificationChannel.SMS,
-  NotificationChannel.OTT,
 ];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -60,7 +58,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const channel = String(formData.get("channel")) as NotificationChannel;
   const enabled = formData.get("enabled") === "on";
 
-  if (!EVENTS.includes(event) || !CHANNELS.includes(channel)) {
+  if (!EVENTS.includes(event) || !(CHANNELS as readonly NotificationChannel[]).includes(channel)) {
     return { ok: false as const, message: "Invalid event or channel." };
   }
 

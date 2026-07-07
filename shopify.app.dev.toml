@@ -4,15 +4,11 @@ application_url = "https://inventorymanagement.spfmktplace.tech.siwon.ca"
 embedded = true
 
 [build]
+include_config_on_deploy = false
 automatically_update_urls_on_dev = true
-include_config_on_deploy = true
 
 [webhooks]
 api_version = "2026-04"
-
-  [[webhooks.subscriptions]]
-  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
-  uri = "/webhooks/compliance"
 
   [[webhooks.subscriptions]]
   topics = [ "app/uninstalled" ]
