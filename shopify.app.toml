@@ -1,11 +1,10 @@
-client_id = "29733f8c66f841d24f5c3182c6d3ce18"
+client_id = "832917927410ac7bd947fa7ffbef7a34"
 name = "inventory-shipping-monitoring"
 application_url = "https://inventorymanagement.spfmktplace.tech.siwon.ca"
 embedded = true
 
 [build]
 automatically_update_urls_on_dev = true
-include_config_on_deploy = true
 
 [webhooks]
 api_version = "2026-04"
