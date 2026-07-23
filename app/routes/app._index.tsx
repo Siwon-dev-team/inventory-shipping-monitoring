@@ -12,6 +12,8 @@ import prisma from "../db.server";
 import { recomputeMerchantForecasts } from "../services/inventory/forecast.server";
 import { ensureMerchantSetup } from "../services/merchant-setup.server";
 import { getMerchantKpiSummary, recordMetricEvent } from "../services/metrics.server";
+import { buildReorderList } from "../services/inventory/reorder-list.server";
+import { getLatestInventoryInsights } from "../services/ai/insights.server";
 import { syncInventoryFromShopify } from "../services/inventory/sync.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -36,6 +38,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     take: 10,
   });
   const kpis = await getMerchantKpiSummary(merchant.id);
+  const reorder = await buildReorderList({
+    merchantId: merchant.id,
+    needsReorderOnly: true,
+  });
+  const variantCount = await prisma.variant.count({
+    where: { merchantId: merchant.id },
+  });
+  const aiInsights =
+    settings?.aiEnabled !== false
+      ? await getLatestInventoryInsights(merchant.id, 3)
+      : [];
 
   return {
     merchant,
@@ -46,6 +59,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     },
     recentAlerts,
     kpis,
+    reorderSummary: reorder.summary,
+    topReorderRows: reorder.rows.slice(0, 5),
+    onboarding: {
+      monitoringEnabled: settings?.monitoringEnabled ?? false,
+      hasInventoryData: variantCount > 0,
+      hasActiveAlertsViewed: activeAlerts > 0 || (settings?.onboardingCompleted ?? false),
+    },
+    aiInsights,
   };
 };
 
@@ -71,6 +92,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const forecastStats = await recomputeMerchantForecasts(merchant.id);
 
     return { ok: true as const, synced: true as const, stats, forecastStats };
+  }
+
+  if (actionType === "complete_onboarding") {
+    await prisma.settings.updateMany({
+      where: { merchantId: merchant.id },
+      data: { onboardingCompleted: true },
+    });
+    return { ok: true as const, synced: false as const, onboardingCompleted: true as const };
   }
 
   const monitoringEnabled = formData.get("monitoringEnabled") === "on";
@@ -126,6 +155,74 @@ export default function Index() {
 
   return (
     <s-page heading="Inventory Monitoring Dashboard">
+      {!settings?.onboardingCompleted ? (
+        <s-section heading="Quick setup">
+          <s-paragraph>
+            {data.onboarding.monitoringEnabled ? "✓" : "○"} 1. Enable monitoring and save
+            thresholds below.
+          </s-paragraph>
+          <s-paragraph>
+            {data.onboarding.hasInventoryData ? "✓" : "○"} 2. Sync inventory from Shopify.
+          </s-paragraph>
+          <s-paragraph>
+            {data.onboarding.hasActiveAlertsViewed ? "✓" : "○"} 3. Review alerts and reorder
+            list.
+          </s-paragraph>
+          <Form method="post">
+            <input type="hidden" name="actionType" value="complete_onboarding" />
+            <s-button
+              type="submit"
+              variant="primary"
+              disabled={
+                !data.onboarding.monitoringEnabled || !data.onboarding.hasInventoryData
+              }
+            >
+              Mark setup complete
+            </s-button>
+          </Form>
+        </s-section>
+      ) : null}
+
+      <s-section heading="Inventory health">
+        <s-paragraph>
+          Stock health score: <s-text>{data.reorderSummary.stockHealthScore}%</s-text>
+        </s-paragraph>
+        <s-paragraph>
+          SKUs needing reorder: <s-text>{data.reorderSummary.needsReorder}</s-text>
+        </s-paragraph>
+        <s-paragraph>
+          Dead stock SKUs: <s-text>{data.reorderSummary.deadStockCount}</s-text>
+        </s-paragraph>
+        <s-paragraph>
+          <s-link href="/app/reorder">Open reorder list</s-link>
+        </s-paragraph>
+        <s-paragraph>
+          <s-link href="/app/purchase-orders">Create purchase orders</s-link>
+        </s-paragraph>
+        <s-paragraph>
+          <s-link href="/app/analytics">View ABC analytics</s-link>
+        </s-paragraph>
+      </s-section>
+
+      <s-section heading="AI insights">
+        {data.aiInsights.length === 0 ? (
+          <s-paragraph>
+            <s-link href="/app/ai">Open AI insights</s-link> to generate recommendations.
+          </s-paragraph>
+        ) : (
+          data.aiInsights.map((insight) => (
+            <s-paragraph key={insight.id}>
+              <s-text>
+                {insight.title}: {insight.message}
+              </s-text>
+            </s-paragraph>
+          ))
+        )}
+        <s-paragraph>
+          <s-link href="/app/ai">View all AI insights</s-link>
+        </s-paragraph>
+      </s-section>
+
       <s-section heading="Monitoring settings">
         <Form method="post">
           <s-stack direction="block" gap="base">
@@ -231,6 +328,42 @@ export default function Index() {
         <s-paragraph>
           <s-link href="/app/forecasting">Forecast and reorder</s-link>
         </s-paragraph>
+        <s-paragraph>
+          <s-link href="/app/suppliers">Manage suppliers</s-link>
+        </s-paragraph>
+      </s-section>
+
+      <s-section heading="Top reorder priorities">
+        {data.topReorderRows.length === 0 ? (
+          <s-paragraph>No urgent SKUs right now.</s-paragraph>
+        ) : (
+          <Card>
+            <IndexTable
+              resourceName={{ singular: "SKU", plural: "SKUs" }}
+              itemCount={data.topReorderRows.length}
+              selectable={false}
+              headings={[
+                { title: "Urgency" },
+                { title: "Product" },
+                { title: "Location" },
+                { title: "Reorder qty" },
+              ]}
+            >
+              {data.topReorderRows.map((row, index) => (
+                <IndexTable.Row
+                  id={`top-reorder-${row.variantId}-${row.locationId ?? "default"}`}
+                  key={`${row.variantId}-${row.locationId ?? "default"}`}
+                  position={index}
+                >
+                  <IndexTable.Cell>{row.urgencyScore}</IndexTable.Cell>
+                  <IndexTable.Cell>{row.productTitle}</IndexTable.Cell>
+                  <IndexTable.Cell>{row.locationName || "-"}</IndexTable.Cell>
+                  <IndexTable.Cell>{row.reorderSuggestionQty}</IndexTable.Cell>
+                </IndexTable.Row>
+              ))}
+            </IndexTable>
+          </Card>
+        )}
       </s-section>
 
       <s-section heading="Recent alerts">

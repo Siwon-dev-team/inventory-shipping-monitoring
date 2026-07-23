@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { Form, useActionData, useLoaderData } from "react-router";
+import { Form, useActionData, useLoaderData, useNavigate } from "react-router";
 import {
   Badge,
   BlockStack,
@@ -291,6 +291,7 @@ export default function ThresholdsPage() {
     selectedTarget,
   } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
+  const navigate = useNavigate();
   const [queryValue, setQueryValue] = useState(query);
   const [scopeValue, setScopeValue] = useState(scope);
   const [pageSizeValue, setPageSizeValue] = useState(String(pageSize));
@@ -454,7 +455,7 @@ export default function ThresholdsPage() {
                     {formatThreshold(variant.criticalThreshold, "critical")}
                   </IndexTable.Cell>
                   <IndexTable.Cell>
-                    <Button url={buildThresholdEditUrl("variant", variant.id)} size="slim">
+                    <Button onClick={() => navigate(buildThresholdEditUrl("variant", variant.id))} size="slim">
                       Set threshold
                     </Button>
                   </IndexTable.Cell>
@@ -491,7 +492,7 @@ export default function ThresholdsPage() {
                     {formatThreshold(product.criticalThreshold, "critical")}
                   </IndexTable.Cell>
                   <IndexTable.Cell>
-                    <Button url={buildThresholdEditUrl("product", product.id)} size="slim">
+                    <Button onClick={() => navigate(buildThresholdEditUrl("product", product.id))} size="slim">
                       Set threshold
                     </Button>
                   </IndexTable.Cell>
@@ -528,7 +529,7 @@ export default function ThresholdsPage() {
                     {formatThreshold(location.criticalThreshold, "critical")}
                   </IndexTable.Cell>
                   <IndexTable.Cell>
-                    <Button url={buildThresholdEditUrl("location", location.id)} size="slim">
+                    <Button onClick={() => navigate(buildThresholdEditUrl("location", location.id))} size="slim">
                       Set threshold
                     </Button>
                   </IndexTable.Cell>
@@ -544,12 +545,8 @@ export default function ThresholdsPage() {
             <Pagination
               hasPrevious={hasPreviousPage}
               hasNext={hasNextPage}
-              onPrevious={() => {
-                window.location.href = buildPageUrl(page - 1);
-              }}
-              onNext={() => {
-                window.location.href = buildPageUrl(page + 1);
-              }}
+              onPrevious={() => navigate(buildPageUrl(page - 1))}
+              onNext={() => navigate(buildPageUrl(page + 1))}
             />
             <Text as="p" variant="bodySm" tone="subdued">
               Showing page {page} of {Math.max(1, Math.ceil(totalCount / pageSize))}

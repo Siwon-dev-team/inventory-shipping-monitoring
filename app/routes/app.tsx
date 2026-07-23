@@ -27,9 +27,14 @@ export default function App() {
       <PolarisAppProvider i18n={enTranslations}>
         <NavMenu>
           <a href="/app">Dashboard</a>
+          <a href="/app/reorder">Reorder list</a>
+          <a href="/app/purchase-orders">Purchase orders</a>
+          <a href="/app/analytics">ABC analytics</a>
           <a href="/app/alerts">Alerts</a>
           <a href="/app/thresholds">Thresholds</a>
           <a href="/app/forecasting">Forecasting</a>
+          <a href="/app/suppliers">Suppliers</a>
+          <a href="/app/ai">AI insights</a>
           <a href="/app/notifications">Notifications</a>
         </NavMenu>
         <Outlet />

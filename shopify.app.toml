@@ -12,6 +12,10 @@ automatically_update_urls_on_dev = true
 api_version = "2026-04"
 
   [[webhooks.subscriptions]]
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+  uri = "/webhooks/compliance"
+
+  [[webhooks.subscriptions]]
   uri = "/webhooks/products/update"
   topics = [ "products/update" ]
 
@@ -27,9 +31,16 @@ api_version = "2026-04"
   uri = "/webhooks/app/uninstalled"
   topics = [ "app/uninstalled" ]
 
+  # NOTE: orders/create webhook requires protected customer data approval
+  # Request access at Partner Dashboard > Apps > [App] > API access > Protected customer data
+  # Once approved, uncomment:
+  # [[webhooks.subscriptions]]
+  # uri = "/webhooks/orders/create"
+  # topics = [ "orders/create" ]
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_inventory,read_locations,read_products"
+scopes = "read_inventory,read_locations,read_orders,read_products,write_inventory"
 
 [auth]
 redirect_urls = [

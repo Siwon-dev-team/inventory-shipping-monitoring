@@ -1,4 +1,4 @@
-import { NotificationChannel, NotificationEvent } from "@prisma/client";
+import { DigestFrequency, NotificationChannel, NotificationEvent } from "@prisma/client";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { Form, useActionData, useLoaderData } from "react-router";
 import prisma from "../db.server";
@@ -14,6 +14,7 @@ const EVENTS = [
 
 const CHANNELS = [
   NotificationChannel.EMAIL,
+  NotificationChannel.SLACK,
 ];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -24,11 +25,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     where: { merchantId: merchant.id },
     orderBy: [{ event: "asc" }, { channel: "asc" }],
   });
+  const settings = await prisma.settings.findUnique({
+    where: { merchantId: merchant.id },
+  });
 
   return {
     merchantId: merchant.id,
     contactEmail: merchant.contactEmail,
     hasFallbackRecipient: Boolean(process.env.ALERT_EMAIL_TO),
+    slackWebhookUrl: settings?.slackWebhookUrl ?? "",
+    digestEnabled: settings?.digestEnabled ?? false,
+    digestFrequency: settings?.digestFrequency ?? DigestFrequency.DAILY,
+    aiEnabled: settings?.aiEnabled ?? true,
     flows,
   };
 };
@@ -52,6 +60,46 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
 
     return { ok: true as const, message: "Email recipient saved." };
+  }
+
+  if (actionType === "slack_settings") {
+    const slackWebhookUrlRaw = String(formData.get("slackWebhookUrl") ?? "").trim();
+    const slackWebhookUrl =
+      slackWebhookUrlRaw.length > 0 ? slackWebhookUrlRaw : null;
+
+    await prisma.settings.updateMany({
+      where: { merchantId: merchant.id },
+      data: { slackWebhookUrl },
+    });
+
+    return { ok: true as const, message: "Slack settings saved." };
+  }
+
+  if (actionType === "digest_settings") {
+    const digestEnabled = formData.get("digestEnabled") === "on";
+    const digestFrequencyRaw = String(formData.get("digestFrequency") ?? DigestFrequency.DAILY);
+    const digestFrequency =
+      digestFrequencyRaw === DigestFrequency.WEEKLY
+        ? DigestFrequency.WEEKLY
+        : DigestFrequency.DAILY;
+
+    await prisma.settings.updateMany({
+      where: { merchantId: merchant.id },
+      data: { digestEnabled, digestFrequency },
+    });
+
+    return { ok: true as const, message: "Digest settings saved." };
+  }
+
+  if (actionType === "ai_settings") {
+    const aiEnabled = formData.get("aiEnabled") === "on";
+
+    await prisma.settings.updateMany({
+      where: { merchantId: merchant.id },
+      data: { aiEnabled },
+    });
+
+    return { ok: true as const, message: "AI settings saved." };
   }
 
   const event = String(formData.get("event")) as NotificationEvent;
@@ -91,7 +139,15 @@ function isEnabled(
 }
 
 export default function NotificationsPage() {
-  const { flows, contactEmail, hasFallbackRecipient } = useLoaderData<typeof loader>();
+  const {
+    flows,
+    contactEmail,
+    hasFallbackRecipient,
+    slackWebhookUrl,
+    digestEnabled,
+    digestFrequency,
+    aiEnabled,
+  } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
 
   return (
@@ -117,6 +173,61 @@ export default function NotificationsPage() {
         <s-paragraph>
           Fallback `ALERT_EMAIL_TO`: {hasFallbackRecipient ? "Configured" : "Not configured"}
         </s-paragraph>
+      </s-section>
+
+      <s-section heading="Slack webhook">
+        <s-paragraph>
+          Paste an incoming webhook URL to receive instant alerts in Slack.
+        </s-paragraph>
+        <Form method="post">
+          <input type="hidden" name="actionType" value="slack_settings" />
+          <s-stack direction="inline" gap="base">
+            <s-text-field
+              name="slackWebhookUrl"
+              label="Slack webhook URL"
+              value={slackWebhookUrl}
+            />
+            <s-button type="submit" variant="primary">
+              Save Slack settings
+            </s-button>
+          </s-stack>
+        </Form>
+      </s-section>
+
+      <s-section heading="Inventory digest">
+        <s-paragraph>
+          Sends a summary of urgent SKUs by email and Slack when enabled.
+        </s-paragraph>
+        <Form method="post">
+          <input type="hidden" name="actionType" value="digest_settings" />
+          <s-stack direction="block" gap="base">
+            <s-checkbox
+              name="digestEnabled"
+              checked={digestEnabled}
+              label="Enable inventory digest"
+            />
+            <label>
+              Frequency
+              <select name="digestFrequency" defaultValue={digestFrequency}>
+                <option value={DigestFrequency.DAILY}>Daily</option>
+                <option value={DigestFrequency.WEEKLY}>Weekly</option>
+              </select>
+            </label>
+            <s-button type="submit">Save digest settings</s-button>
+          </s-stack>
+        </Form>
+      </s-section>
+
+      <s-section heading="AI assistant">
+        <s-paragraph>
+          Enable AI insights and Q&amp;A on the AI Insights page. Uses OpenAI when configured,
+          otherwise smart inventory rules.
+        </s-paragraph>
+        <Form method="post">
+          <input type="hidden" name="actionType" value="ai_settings" />
+          <s-checkbox name="aiEnabled" checked={aiEnabled} label="Enable AI insights" />
+          <s-button type="submit">Save AI settings</s-button>
+        </Form>
       </s-section>
 
       <s-section heading="Event channel matrix">

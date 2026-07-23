@@ -5,6 +5,7 @@ import {
 } from "@prisma/client";
 import prisma from "../../db.server";
 import { sendEmail } from "./email.server";
+import { sendSlackMessage } from "./slack.server";
 import { withRetry } from "../retry.server";
 
 type DispatchPayload = {
@@ -47,6 +48,7 @@ async function markDeliveryFailed(
 export async function dispatchInventoryNotification(payload: DispatchPayload) {
   const merchant = await prisma.merchant.findUnique({
     where: { id: payload.merchantId },
+    include: { settings: true },
   });
   if (!merchant) return;
 
@@ -104,6 +106,48 @@ export async function dispatchInventoryNotification(payload: DispatchPayload) {
           data: {
             status: NotificationDeliveryStatus.SENT,
             recipient,
+            deliveredAt: new Date(),
+            attemptedAt: new Date(),
+            retryCount: 0,
+            nextRetryAt: null,
+          },
+        });
+
+        if (payload.alertId) {
+          await prisma.inventoryAlert.update({
+            where: { id: payload.alertId },
+            data: {
+              lastAlertSentAt: new Date(),
+            },
+          });
+        }
+      } else if (flow.channel === NotificationChannel.SLACK) {
+        const webhookUrl = merchant.settings?.slackWebhookUrl;
+        if (!webhookUrl) {
+          throw new Error("Missing Slack webhook URL in settings");
+        }
+
+        await withRetry(
+          () =>
+            sendSlackMessage(
+              webhookUrl,
+              [
+                `*[${payload.levelLabel}]* ${payload.productTitle}`,
+                `Shop: ${merchant.shopDomain}`,
+                `SKU: ${payload.variantSku || "N/A"}`,
+                `Current quantity: ${payload.currentQuantity}`,
+                `Threshold: ${payload.thresholdValue}`,
+              ].join("\n"),
+            ),
+          2,
+          200,
+        );
+
+        await prisma.notificationDelivery.update({
+          where: { id: delivery.id },
+          data: {
+            status: NotificationDeliveryStatus.SENT,
+            recipient: webhookUrl,
             deliveredAt: new Date(),
             attemptedAt: new Date(),
             retryCount: 0,

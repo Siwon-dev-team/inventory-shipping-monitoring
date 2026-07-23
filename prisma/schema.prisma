@@ -47,6 +47,7 @@ enum NotificationEvent {
 
 enum NotificationChannel {
   EMAIL
+  SLACK
   SMS
   OTT
 }
@@ -71,6 +72,27 @@ enum MetricEventType {
   ALERT_RESOLVED
 }
 
+enum PurchaseOrderStatus {
+  DRAFT
+  SENT
+  RECEIVED
+  CANCELLED
+}
+
+enum DigestFrequency {
+  DAILY
+  WEEKLY
+}
+
+enum AiInsightType {
+  STOCKOUT_RISK
+  DEAD_STOCK
+  VELOCITY_SPIKE
+  VELOCITY_DROP
+  REORDER_PRIORITY
+  SUMMARY
+}
+
 model Merchant {
   id           Int      @id @default(autoincrement())
   shopDomain   String   @unique
@@ -79,6 +101,7 @@ model Merchant {
   updatedAt    DateTime @updatedAt
 
   settings               Settings?
+  suppliers              Supplier[]
   locations              Location[]
   products               Product[]
   variants               Variant[]
@@ -88,6 +111,8 @@ model Merchant {
   notificationDeliveries NotificationDelivery[]
   webhookDeliveries      WebhookDelivery[]
   metricEvents           MetricEvent[]
+  purchaseOrders         PurchaseOrder[]
+  aiInsights             AiInsight[]
 }
 
 model Settings {
@@ -99,10 +124,32 @@ model Settings {
   safetyBufferDays         Int      @default(5)
   notifyOnRestocked        Boolean  @default(false)
   schedulerIntervalMinutes Int      @default(15)
+  slackWebhookUrl          String?
+  digestEnabled            Boolean         @default(false)
+  digestFrequency          DigestFrequency @default(DAILY)
+  lastDigestSentAt         DateTime?
+  aiEnabled                Boolean         @default(true)
+  onboardingCompleted      Boolean         @default(false)
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 
   merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+}
+
+model Supplier {
+  id           Int      @id @default(autoincrement())
+  merchantId   Int
+  name         String
+  email        String?
+  leadTimeDays Int      @default(7)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  merchant Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  products Product[]
+  purchaseOrders PurchaseOrder[]
+
+  @@index([merchantId])
 }
 
 model Location {
@@ -118,6 +165,7 @@ model Location {
   merchant        Merchant           @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   inventoryLevels VariantInventory[]
   inventoryAlerts InventoryAlert[]
+  purchaseOrderLines PurchaseOrderLine[]
 
   @@unique([merchantId, shopifyLocationId])
   @@index([merchantId])
@@ -128,6 +176,7 @@ model Product {
   merchantId        Int
   shopifyProductId  String
   title             String
+  supplierId        Int?
   lowThreshold      Int?
   criticalThreshold Int?
   classification    ProductClassification @default(UNKNOWN)
@@ -135,6 +184,7 @@ model Product {
   updatedAt         DateTime              @updatedAt
 
   merchant        Merchant         @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  supplier        Supplier?        @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   variants        Variant[]
   inventoryAlerts InventoryAlert[]
 
@@ -167,6 +217,7 @@ model Variant {
   inventoryLevels VariantInventory[]
   inventoryAlerts InventoryAlert[]
   salesData       SalesData[]
+  purchaseOrderLines PurchaseOrderLine[]
 
   @@unique([merchantId, shopifyVariantId])
   @@index([merchantId, productId])
@@ -298,4 +349,56 @@ model MetricEvent {
   merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
 
   @@index([merchantId, eventType, createdAt])
+}
+
+model PurchaseOrder {
+  id         Int                 @id @default(autoincrement())
+  merchantId Int
+  supplierId Int?
+  status     PurchaseOrderStatus @default(DRAFT)
+  notes      String?
+  sentAt     DateTime?
+  receivedAt DateTime?
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  merchant Merchant             @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  supplier Supplier?            @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  lines    PurchaseOrderLine[]
+
+  @@index([merchantId, status])
+}
+
+model PurchaseOrderLine {
+  id              Int      @id @default(autoincrement())
+  purchaseOrderId Int
+  variantId       Int?
+  locationId      Int?
+  productTitle    String
+  sku             String?
+  locationName    String?
+  quantity        Int
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  variant       Variant?      @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  location      Location?     @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  @@index([purchaseOrderId])
+}
+
+model AiInsight {
+  id         Int           @id @default(autoincrement())
+  merchantId Int
+  type       AiInsightType
+  title      String
+  message    String
+  score      Float?
+  metadata   String?
+  createdAt  DateTime      @default(now())
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId, createdAt])
 }

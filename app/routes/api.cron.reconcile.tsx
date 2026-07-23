@@ -3,6 +3,7 @@ import prisma from "../db.server";
 import { recomputeMerchantForecasts } from "../services/inventory/forecast.server";
 import { monitorVariantQuantity } from "../services/inventory/monitor.server";
 import { retryFailedNotificationDeliveries } from "../services/notifications/dispatcher.server";
+import { sendDailyDigestsForAllMerchants } from "../services/notifications/digest.server";
 import { withRetry } from "../services/retry.server";
 
 function isAuthorized(request: Request) {
@@ -96,6 +97,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   const notificationRetry = await retryFailedNotificationDeliveries(100);
+  const digest = await sendDailyDigestsForAllMerchants();
 
   return Response.json({
     ok: true,
@@ -103,6 +105,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     failed,
     forecastsUpdated,
     notificationRetry,
+    digest,
   });
 };
 
