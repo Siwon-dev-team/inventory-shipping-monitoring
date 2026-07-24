@@ -157,10 +157,87 @@ function answerWithRules(question: string, context: ChatContext): string {
   return `Inventory Summary:\n\n${context.summary}\n\nTry asking:\n• "What should I reorder?"\n• "What's running low?"\n• "Any stockout risks?"\n• "What's selling fast?"\n• Type "help" for more options`;
 }
 
-async function answerWithLlm(question: string, context: ChatContext): Promise<string | null> {
+function buildPromptMessages(question: string, context: ChatContext) {
+  return {
+    system:
+      "You are an inventory assistant for a Shopify SMB merchant. Answer briefly and helpfully using only the provided inventory context. If data is missing, say so. Format responses clearly with bullet points when listing items.",
+    user: [
+      "Inventory context:",
+      context.summary,
+      "",
+      "Top SKUs needing attention:",
+      context.topSkus.join("\n"),
+      "",
+      "Current insights:",
+      context.insights.join("\n"),
+      "",
+      `Question: ${question}`,
+    ].join("\n"),
+  };
+}
+
+async function answerWithGroq(question: string, context: ChatContext): Promise<string | null> {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) return null;
+
+  const prompts = buildPromptMessages(question, context);
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: process.env.GROQ_MODEL ?? "llama-3.1-8b-instant",
+      temperature: 0.3,
+      max_tokens: 500,
+      messages: [
+        { role: "system", content: prompts.system },
+        { role: "user", content: prompts.user },
+      ],
+    }),
+  });
+
+  if (!response.ok) return null;
+
+  const payload = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+
+  return payload.choices?.[0]?.message?.content?.trim() ?? null;
+}
+
+async function answerWithGemini(question: string, context: ChatContext): Promise<string | null> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+
+  const prompts = buildPromptMessages(question, context);
+  const model = process.env.GEMINI_MODEL ?? "gemini-1.5-flash";
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: `${prompts.system}\n\n${prompts.user}` }] }],
+      generationConfig: { temperature: 0.3, maxOutputTokens: 500 },
+    }),
+  });
+
+  if (!response.ok) return null;
+
+  const payload = (await response.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
+
+  return payload.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? null;
+}
+
+async function answerWithOpenAI(question: string, context: ChatContext): Promise<string | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
 
+  const prompts = buildPromptMessages(question, context);
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -169,41 +246,36 @@ async function answerWithLlm(question: string, context: ChatContext): Promise<st
     },
     body: JSON.stringify({
       model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
-      temperature: 0.2,
+      temperature: 0.3,
+      max_tokens: 500,
       messages: [
-        {
-          role: "system",
-          content:
-            "You are an inventory assistant for a Shopify SMB merchant. Answer briefly using only the provided inventory context. If data is missing, say so.",
-        },
-        {
-          role: "user",
-          content: [
-            "Inventory context:",
-            context.summary,
-            "",
-            "Top SKUs:",
-            context.topSkus.join("\n"),
-            "",
-            "Insights:",
-            context.insights.join("\n"),
-            "",
-            `Question: ${question}`,
-          ].join("\n"),
-        },
+        { role: "system", content: prompts.system },
+        { role: "user", content: prompts.user },
       ],
     }),
   });
 
-  if (!response.ok) {
-    return null;
-  }
+  if (!response.ok) return null;
 
   const payload = (await response.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
   };
 
   return payload.choices?.[0]?.message?.content?.trim() ?? null;
+}
+
+async function answerWithLlm(question: string, context: ChatContext): Promise<string | null> {
+  // Try providers in order: Groq (free) -> Gemini (free) -> OpenAI (paid)
+  const groqAnswer = await answerWithGroq(question, context);
+  if (groqAnswer) return groqAnswer;
+
+  const geminiAnswer = await answerWithGemini(question, context);
+  if (geminiAnswer) return geminiAnswer;
+
+  const openaiAnswer = await answerWithOpenAI(question, context);
+  if (openaiAnswer) return openaiAnswer;
+
+  return null;
 }
 
 export async function answerInventoryQuestion(merchantId: number, question: string) {
@@ -226,5 +298,8 @@ export async function answerInventoryQuestion(merchantId: number, question: stri
 }
 
 export function getAiModeLabel() {
-  return process.env.OPENAI_API_KEY ? "AI (OpenAI)" : "Smart rules";
+  if (process.env.GROQ_API_KEY) return "AI (Groq Llama)";
+  if (process.env.GEMINI_API_KEY) return "AI (Google Gemini)";
+  if (process.env.OPENAI_API_KEY) return "AI (OpenAI)";
+  return "Smart rules";
 }
