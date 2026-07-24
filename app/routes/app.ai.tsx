@@ -24,11 +24,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     ? await getLatestInventoryInsights(merchant.id, 15)
     : [];
 
+  const isAiConfigured = Boolean(
+    process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY
+  );
+
   return {
     insights,
     aiEnabled: settings?.aiEnabled ?? true,
     aiMode: getAiModeLabel(),
-    openAiConfigured: Boolean(process.env.OPENAI_API_KEY),
+    isAiConfigured,
   };
 };
 
@@ -95,60 +99,66 @@ function insightBadge(type: string) {
 }
 
 export default function AiInsightsPage() {
-  const { insights, aiEnabled, aiMode, openAiConfigured } = useLoaderData<typeof loader>();
+  const { insights, aiEnabled, aiMode, isAiConfigured } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
 
   return (
     <s-page heading="AI Inventory Insights">
-      <s-section heading="Assistant mode">
-        <s-paragraph>
-          Mode: <s-text>{aiMode}</s-text>
-        </s-paragraph>
-        <s-paragraph>
-          AI status: <s-text>{aiEnabled ? "Enabled" : "Disabled"}</s-text>
-        </s-paragraph>
-        {!openAiConfigured ? (
-          <s-paragraph>
-            Set `OPENAI_API_KEY` to unlock LLM answers. Without it, the assistant uses smart
-            inventory rules.
-          </s-paragraph>
-        ) : null}
-      </s-section>
-
-      <s-section heading="Refresh insights">
-        <Form method="post">
-          <input type="hidden" name="actionType" value="refresh_insights" />
-          <s-button type="submit" variant="primary">
-            Refresh insights
-          </s-button>
-        </Form>
-        {actionData?.message ? (
-          <s-paragraph>
-            <s-text>{actionData.message}</s-text>
-          </s-paragraph>
-        ) : null}
+      <s-section heading="Assistant">
+        <Card>
+          <div style={{ padding: "16px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px" }}>
+              <Badge tone={isAiConfigured ? "success" : "warning"}>
+                {isAiConfigured ? "AI Active" : "Basic Mode"}
+              </Badge>
+              <span style={{ color: "#637381", fontSize: "14px" }}>{aiMode}</span>
+            </div>
+            {isAiConfigured ? (
+              <p style={{ margin: 0, color: "#202223", fontSize: "14px" }}>
+                Ask any question about your inventory in natural language.
+              </p>
+            ) : (
+              <p style={{ margin: 0, color: "#637381", fontSize: "14px" }}>
+                Add a free AI key (Groq or Gemini) in server settings to enable smart answers.
+              </p>
+            )}
+          </div>
+        </Card>
       </s-section>
 
       <s-section heading="Ask your inventory">
-        <Form method="post">
-          <input type="hidden" name="actionType" value="ask" />
-          <s-stack direction="block" gap="base">
-            <s-text-field
-              name="question"
-              label="Question"
-              value=""
-              placeholder="What should I reorder first?"
-            />
-            <s-button type="submit">Ask AI</s-button>
-          </s-stack>
-        </Form>
+        <Card>
+          <div style={{ padding: "16px" }}>
+            <Form method="post">
+              <input type="hidden" name="actionType" value="ask" />
+              <div style={{ marginBottom: "12px" }}>
+                <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
+                  Question
+                </label>
+                <input
+                  type="text"
+                  name="question"
+                  placeholder="e.g. What should I reorder? / Any stockout risks? / How is my inventory?"
+                  style={{
+                    width: "100%",
+                    padding: "10px 12px",
+                    border: "1px solid #c9cccf",
+                    borderRadius: "8px",
+                    fontSize: "14px",
+                  }}
+                />
+              </div>
+              <s-button type="submit" variant="primary">Ask AI</s-button>
+            </Form>
+          </div>
+        </Card>
         {actionData?.answer ? (
           <Card>
             <div style={{ padding: "16px" }}>
-              <Badge tone={actionData.mode === "ai" ? "success" : "info"}>
-                {actionData.mode === "ai" ? "AI Response" : "Smart Rules"}
-              </Badge>
-              <div style={{ marginTop: "12px", whiteSpace: "pre-wrap", lineHeight: "1.6" }}>
+              <div style={{ marginBottom: "12px" }}>
+                <Badge tone="success">AI Response</Badge>
+              </div>
+              <div style={{ whiteSpace: "pre-wrap", lineHeight: "1.7", color: "#202223" }}>
                 {actionData.answer}
               </div>
             </div>
@@ -156,11 +166,29 @@ export default function AiInsightsPage() {
         ) : null}
       </s-section>
 
-      <s-section heading="Generated insights">
+      <s-section heading="Auto-generated insights">
+        <div style={{ marginBottom: "12px" }}>
+          <Form method="post" style={{ display: "inline" }}>
+            <input type="hidden" name="actionType" value="refresh_insights" />
+            <s-button type="submit">Refresh insights</s-button>
+          </Form>
+          {actionData?.message ? (
+            <span style={{ marginLeft: "12px", color: "#008060" }}>{actionData.message}</span>
+          ) : null}
+        </div>
+
         {!aiEnabled ? (
-          <s-paragraph>Enable AI in notification settings to use insights.</s-paragraph>
+          <Card>
+            <div style={{ padding: "16px", color: "#637381" }}>
+              Enable AI in Notifications settings to use insights.
+            </div>
+          </Card>
         ) : insights.length === 0 ? (
-          <s-paragraph>No insights yet. Click regenerate.</s-paragraph>
+          <Card>
+            <div style={{ padding: "16px", color: "#637381" }}>
+              No insights yet. Click "Refresh insights" to generate.
+            </div>
+          </Card>
         ) : (
           <Card>
             <IndexTable
