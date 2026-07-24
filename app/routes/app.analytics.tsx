@@ -1,6 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { Form, useLoaderData } from "react-router";
+import { Form, useFetcher, useLoaderData } from "react-router";
 import { Badge, Card, IndexTable } from "@shopify/polaris";
+import { useEffect, useRef } from "react";
 import prisma from "../db.server";
 import { authenticate } from "../shopify.server";
 import {
@@ -97,16 +98,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     filter === "all" ? rows : rows.filter((row) => row.abcClass === filter);
   const csv = abcAnalyticsToCsv(filteredRows);
 
-  return new Response(csv, {
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="abc-analytics-${merchant.shopDomain}.csv"`,
-    },
-  });
+  return csv;
 };
 
 export default function AnalyticsPage() {
   const { rows, summary, filter } = useLoaderData<typeof loader>();
+  const csvFetcher = useFetcher();
+  const downloadTriggered = useRef(false);
+
+  useEffect(() => {
+    if (csvFetcher.data && typeof csvFetcher.data === "string" && !downloadTriggered.current) {
+      downloadTriggered.current = true;
+      const blob = new Blob([csvFetcher.data], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `abc-analytics-${new Date().toISOString().split("T")[0]}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+    if (csvFetcher.state === "idle" && !csvFetcher.data) {
+      downloadTriggered.current = false;
+    }
+  }, [csvFetcher.data, csvFetcher.state]);
 
   return (
     <s-page heading="ABC Analytics">
@@ -141,13 +157,13 @@ export default function AnalyticsPage() {
             <s-button type="submit">Apply</s-button>
           </s-stack>
         </Form>
-        <Form method="post" reloadDocument>
+        <csvFetcher.Form method="post">
           <input type="hidden" name="actionType" value="export_csv" />
           {filter !== "all" ? <input type="hidden" name="class" value={filter} /> : null}
-          <s-button type="submit" variant="primary">
-            Export CSV
+          <s-button type="submit" variant="primary" disabled={csvFetcher.state !== "idle"}>
+            {csvFetcher.state !== "idle" ? "Exporting..." : "Export CSV"}
           </s-button>
-        </Form>
+        </csvFetcher.Form>
       </s-section>
 
       <s-section heading="SKU classification">

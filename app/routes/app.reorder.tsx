@@ -1,6 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { Form, useActionData, useLoaderData } from "react-router";
+import { Form, useActionData, useFetcher, useLoaderData } from "react-router";
 import { Badge, Card, IndexTable } from "@shopify/polaris";
+import { useEffect, useRef } from "react";
 import { authenticate } from "../shopify.server";
 import { ensureMerchantSetup } from "../services/merchant-setup.server";
 import {
@@ -76,12 +77,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   const csv = reorderListToCsv(rows);
-  return new Response(csv, {
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="reorder-list-${merchant.shopDomain}.csv"`,
-    },
-  });
+  return csv;
 };
 
 function formatDate(value: string | null) {
@@ -92,6 +88,26 @@ function formatDate(value: string | null) {
 export default function ReorderPage() {
   const data = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
+  const csvFetcher = useFetcher();
+  const downloadTriggered = useRef(false);
+
+  useEffect(() => {
+    if (csvFetcher.data && typeof csvFetcher.data === "string" && !downloadTriggered.current) {
+      downloadTriggered.current = true;
+      const blob = new Blob([csvFetcher.data], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `reorder-list-${new Date().toISOString().split("T")[0]}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+    if (csvFetcher.state === "idle" && !csvFetcher.data) {
+      downloadTriggered.current = false;
+    }
+  }, [csvFetcher.data, csvFetcher.state]);
 
   return (
     <s-page heading="Reorder list">
@@ -135,16 +151,16 @@ export default function ReorderPage() {
             <s-button type="submit">Apply</s-button>
           </s-stack>
         </Form>
-        <Form method="post" reloadDocument>
+        <csvFetcher.Form method="post">
           <input type="hidden" name="actionType" value="export_csv" />
           {data.locationId ? (
             <input type="hidden" name="locationId" value={data.locationId} />
           ) : null}
           {data.filter ? <input type="hidden" name="filter" value={data.filter} /> : null}
-          <s-button type="submit" variant="primary">
-            Export CSV
+          <s-button type="submit" variant="primary" disabled={csvFetcher.state !== "idle"}>
+            {csvFetcher.state !== "idle" ? "Exporting..." : "Export CSV"}
           </s-button>
-        </Form>
+        </csvFetcher.Form>
         <Form method="post">
           <input type="hidden" name="actionType" value="create_pos" />
           {data.locationId ? (
@@ -153,7 +169,7 @@ export default function ReorderPage() {
           {data.filter ? <input type="hidden" name="filter" value={data.filter} /> : null}
           <s-button type="submit">Create draft POs</s-button>
         </Form>
-        {actionData?.message ? (
+        {actionData && typeof actionData === "object" && "message" in actionData ? (
           <s-paragraph>
             <s-text>{actionData.message}</s-text>
           </s-paragraph>
