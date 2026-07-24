@@ -135,12 +135,16 @@ export default function ReorderPage() {
             <s-button type="submit">Apply</s-button>
           </s-stack>
         </Form>
-        <a
-          href={`/app/reorder-export${data.locationId || data.filter ? "?" : ""}${data.locationId ? `locationId=${data.locationId}` : ""}${data.locationId && data.filter ? "&" : ""}${data.filter ? `filter=${data.filter}` : ""}`}
-          download
-        >
-          <s-button variant="primary">Export CSV</s-button>
-        </a>
+        <Form method="post" reloadDocument>
+          <input type="hidden" name="actionType" value="export_csv" />
+          {data.locationId ? (
+            <input type="hidden" name="locationId" value={data.locationId} />
+          ) : null}
+          {data.filter ? <input type="hidden" name="filter" value={data.filter} /> : null}
+          <s-button type="submit" variant="primary">
+            Export CSV
+          </s-button>
+        </Form>
         <Form method="post">
           <input type="hidden" name="actionType" value="create_pos" />
           {data.locationId ? (

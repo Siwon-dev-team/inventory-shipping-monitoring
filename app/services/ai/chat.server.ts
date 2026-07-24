@@ -17,7 +17,7 @@ async function buildChatContext(merchantId: number): Promise<ChatContext> {
     summary: `Stock health ${summary.stockHealthScore}%, ${summary.needsReorder} SKUs need reorder, ${summary.deadStockCount} dead stock SKUs.`,
     topSkus: rows.slice(0, 10).map(
       (row) =>
-        `${row.productTitle} (${row.sku || "no SKU"}): qty ${row.inventoryQuantity}, reorder ${row.reorderSuggestionQty}, urgency ${row.urgencyScore}`,
+        `${row.productTitle}${row.sku ? ` (SKU: ${row.sku})` : ""}\n   • Current stock: ${row.inventoryQuantity}\n   • Suggested reorder: ${row.reorderSuggestionQty}\n   • Urgency score: ${row.urgencyScore}`,
     ),
     insights: insights.slice(0, 8).map((insight) => `${insight.title} — ${insight.message}`),
   };
@@ -44,7 +44,8 @@ function answerWithRules(question: string, context: ChatContext): string {
     if (context.topSkus.length === 0) {
       return "No urgent reorder SKUs right now based on current velocity and thresholds.";
     }
-    return `Top reorder priorities:\n${context.topSkus.slice(0, 5).join("\n")}`;
+    const formatted = context.topSkus.slice(0, 5).map((sku, i) => `${i + 1}. ${sku}`);
+    return `Top reorder priorities:\n\n${formatted.join("\n\n")}`;
   }
 
   if (normalized.includes("health") || normalized.includes("summary")) {
