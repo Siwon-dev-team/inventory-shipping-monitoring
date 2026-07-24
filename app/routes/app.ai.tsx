@@ -119,7 +119,7 @@ export default function AiInsightsPage() {
         <Form method="post">
           <input type="hidden" name="actionType" value="refresh_insights" />
           <s-button type="submit" variant="primary">
-            Regenerate insights
+            Refresh insights
           </s-button>
         </Form>
         {actionData?.message ? (
@@ -143,13 +143,16 @@ export default function AiInsightsPage() {
           </s-stack>
         </Form>
         {actionData?.answer ? (
-          <s-box borderWidth="base" borderRadius="base" padding="base">
-            <s-paragraph>
-              <s-text>
-                [{actionData.mode}] {actionData.answer}
-              </s-text>
-            </s-paragraph>
-          </s-box>
+          <Card>
+            <div style={{ padding: "16px" }}>
+              <Badge tone={actionData.mode === "ai" ? "success" : "info"}>
+                {actionData.mode === "ai" ? "AI Response" : "Smart Rules"}
+              </Badge>
+              <div style={{ marginTop: "12px", whiteSpace: "pre-wrap", lineHeight: "1.6" }}>
+                {actionData.answer}
+              </div>
+            </div>
+          </Card>
         ) : null}
       </s-section>
 

@@ -141,13 +141,12 @@ export default function AnalyticsPage() {
             <s-button type="submit">Apply</s-button>
           </s-stack>
         </Form>
-        <Form method="post">
-          <input type="hidden" name="actionType" value="export_csv" />
-          {filter !== "all" ? <input type="hidden" name="class" value={filter} /> : null}
-          <s-button type="submit" variant="primary">
-            Export CSV
-          </s-button>
-        </Form>
+        <a
+          href={`/app/analytics-export${filter !== "all" ? `?class=${filter}` : ""}`}
+          download
+        >
+          <s-button variant="primary">Export CSV</s-button>
+        </a>
       </s-section>
 
       <s-section heading="SKU classification">
