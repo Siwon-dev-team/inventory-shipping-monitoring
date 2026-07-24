@@ -26,7 +26,8 @@ async function buildChatContext(merchantId: number): Promise<ChatContext> {
 function answerWithRules(question: string, context: ChatContext): string {
   const normalized = question.toLowerCase();
 
-  if (normalized.includes("dead stock") || normalized.includes("dead")) {
+  // Dead stock questions
+  if (normalized.includes("dead stock") || normalized.includes("dead") || normalized.includes("not selling")) {
     const deadInsight = context.insights.find((item) =>
       item.toLowerCase().includes("dead stock"),
     );
@@ -36,10 +37,16 @@ function answerWithRules(question: string, context: ChatContext): string {
     );
   }
 
+  // Reorder / buy / purchase questions
   if (
     normalized.includes("reorder") ||
-    normalized.includes("order") ||
-    normalized.includes("restock")
+    normalized.includes("restock") ||
+    normalized.includes("should i buy") ||
+    normalized.includes("should i order") ||
+    normalized.includes("need to buy") ||
+    normalized.includes("need to order") ||
+    normalized.includes("what to buy") ||
+    normalized.includes("what to order")
   ) {
     if (context.topSkus.length === 0) {
       return "No urgent reorder SKUs right now based on current velocity and thresholds.";
@@ -48,18 +55,106 @@ function answerWithRules(question: string, context: ChatContext): string {
     return `Top reorder priorities:\n\n${formatted.join("\n\n")}`;
   }
 
-  if (normalized.includes("health") || normalized.includes("summary")) {
-    return `${context.summary}\n\nKey insights:\n${context.insights.slice(0, 3).join("\n")}`;
+  // Low stock / running low questions
+  if (
+    normalized.includes("low stock") ||
+    normalized.includes("low on stock") ||
+    normalized.includes("running low") ||
+    normalized.includes("running out") ||
+    normalized.includes("almost out")
+  ) {
+    if (context.topSkus.length === 0) {
+      return "All products have adequate stock levels right now.";
+    }
+    const formatted = context.topSkus.slice(0, 5).map((sku, i) => `${i + 1}. ${sku}`);
+    return `Products running low:\n\n${formatted.join("\n\n")}`;
   }
 
-  if (normalized.includes("stockout") || normalized.includes("run out")) {
+  // Health / summary / overview questions
+  if (
+    normalized.includes("health") ||
+    normalized.includes("summary") ||
+    normalized.includes("overview") ||
+    normalized.includes("how is") ||
+    normalized.includes("how's") ||
+    normalized.includes("status")
+  ) {
+    let response = `Inventory Summary:\n\n${context.summary}`;
+    if (context.insights.length > 0) {
+      response += `\n\nKey insights:\n${context.insights.slice(0, 3).map((i, idx) => `${idx + 1}. ${i}`).join("\n")}`;
+    }
+    return response;
+  }
+
+  // Stockout / out of stock questions
+  if (
+    normalized.includes("stockout") ||
+    normalized.includes("out of stock") ||
+    normalized.includes("run out") ||
+    normalized.includes("going to run out")
+  ) {
     const stockoutInsight = context.insights.find((item) =>
       item.toLowerCase().includes("stockout"),
     );
     return stockoutInsight ?? "No immediate stockout risks detected in the next week.";
   }
 
-  return `Here is what I see right now:\n${context.summary}\n\nAsk about reorder priorities, dead stock, stockout risk, or inventory health.`;
+  // Fast selling / best sellers questions
+  if (
+    normalized.includes("selling fast") ||
+    normalized.includes("fast seller") ||
+    normalized.includes("best seller") ||
+    normalized.includes("top seller") ||
+    normalized.includes("popular") ||
+    normalized.includes("high velocity")
+  ) {
+    const velocityInsight = context.insights.find((item) =>
+      item.toLowerCase().includes("velocity") || item.toLowerCase().includes("spike"),
+    );
+    if (velocityInsight) {
+      return `Fast-moving products:\n\n${velocityInsight}`;
+    }
+    return "Check the ABC Analytics page - Class A products are your fastest sellers based on sales velocity.";
+  }
+
+  // Slow selling questions
+  if (
+    normalized.includes("slow") ||
+    normalized.includes("not moving") ||
+    normalized.includes("stale")
+  ) {
+    const deadInsight = context.insights.find((item) =>
+      item.toLowerCase().includes("dead stock") || item.toLowerCase().includes("slow"),
+    );
+    return (
+      deadInsight ??
+      "Check ABC Analytics - Class C products are your slowest movers. Dead stock items haven't sold in 30+ days."
+    );
+  }
+
+  // Alert questions
+  if (normalized.includes("alert") || normalized.includes("warning") || normalized.includes("problem")) {
+    if (context.insights.length === 0) {
+      return "No active inventory alerts or warnings right now.";
+    }
+    const formatted = context.insights.slice(0, 5).map((i, idx) => `${idx + 1}. ${i}`);
+    return `Active inventory alerts:\n\n${formatted.join("\n")}`;
+  }
+
+  // Help / what can you do
+  if (normalized.includes("help") || normalized.includes("what can you")) {
+    return `I can answer questions about your inventory:\n
+• "What should I reorder?" - Top reorder priorities
+• "What's running low?" - Low stock items
+• "How is my inventory?" - Overall health summary
+• "What's selling fast?" - Fast-moving products
+• "Any stockout risks?" - Items at risk of running out
+• "Any dead stock?" - Items not selling
+• "What are my alerts?" - Active inventory warnings`;
+  }
+
+  // Default fallback with summary
+  return `Inventory Summary:\n\n${context.summary}\n\nTry asking:\n• "What should I reorder?"\n• "What's running low?"\n• "Any stockout risks?"\n• "What's selling fast?"\n• Type "help" for more options`;
 }
 
 async function answerWithLlm(question: string, context: ChatContext): Promise<string | null> {

@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { Form, useFetcher, useLoaderData } from "react-router";
+import { Form, useFetcher, useLoaderData, useSearchParams } from "react-router";
 import { Badge, Card, IndexTable } from "@shopify/polaris";
 import { useEffect, useRef } from "react";
 import prisma from "../db.server";
@@ -102,9 +102,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function AnalyticsPage() {
-  const { rows, summary, filter } = useLoaderData<typeof loader>();
+  const { rows, summary } = useLoaderData<typeof loader>();
   const csvFetcher = useFetcher();
   const downloadTriggered = useRef(false);
+  const [searchParams] = useSearchParams();
+  const currentClass = searchParams.get("class") ?? "all";
 
   useEffect(() => {
     if (csvFetcher.data && typeof csvFetcher.data === "string" && !downloadTriggered.current) {
@@ -147,7 +149,7 @@ export default function AnalyticsPage() {
           <s-stack direction="inline" gap="base">
             <label>
               ABC class
-              <select name="class" defaultValue={filter}>
+              <select name="class" defaultValue={currentClass}>
                 <option value="all">All</option>
                 <option value="A">A</option>
                 <option value="B">B</option>
@@ -159,7 +161,7 @@ export default function AnalyticsPage() {
         </Form>
         <csvFetcher.Form method="post">
           <input type="hidden" name="actionType" value="export_csv" />
-          {filter !== "all" ? <input type="hidden" name="class" value={filter} /> : null}
+          {currentClass !== "all" ? <input type="hidden" name="class" value={currentClass} /> : null}
           <s-button type="submit" variant="primary" disabled={csvFetcher.state !== "idle"}>
             {csvFetcher.state !== "idle" ? "Exporting..." : "Export CSV"}
           </s-button>

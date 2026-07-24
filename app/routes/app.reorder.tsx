@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { Form, useActionData, useFetcher, useLoaderData } from "react-router";
+import { Form, useActionData, useFetcher, useLoaderData, useSearchParams } from "react-router";
 import { Badge, Card, IndexTable } from "@shopify/polaris";
 import { useEffect, useRef } from "react";
 import { authenticate } from "../shopify.server";
@@ -90,6 +90,9 @@ export default function ReorderPage() {
   const actionData = useActionData<typeof action>();
   const csvFetcher = useFetcher();
   const downloadTriggered = useRef(false);
+  const [searchParams] = useSearchParams();
+  const currentLocationId = searchParams.get("locationId") ?? "";
+  const currentFilter = searchParams.get("filter") ?? "";
 
   useEffect(() => {
     if (csvFetcher.data && typeof csvFetcher.data === "string" && !downloadTriggered.current) {
@@ -153,20 +156,20 @@ export default function ReorderPage() {
         </Form>
         <csvFetcher.Form method="post">
           <input type="hidden" name="actionType" value="export_csv" />
-          {data.locationId ? (
-            <input type="hidden" name="locationId" value={data.locationId} />
+          {currentLocationId ? (
+            <input type="hidden" name="locationId" value={currentLocationId} />
           ) : null}
-          {data.filter ? <input type="hidden" name="filter" value={data.filter} /> : null}
+          {currentFilter ? <input type="hidden" name="filter" value={currentFilter} /> : null}
           <s-button type="submit" variant="primary" disabled={csvFetcher.state !== "idle"}>
             {csvFetcher.state !== "idle" ? "Exporting..." : "Export CSV"}
           </s-button>
         </csvFetcher.Form>
         <Form method="post">
           <input type="hidden" name="actionType" value="create_pos" />
-          {data.locationId ? (
-            <input type="hidden" name="locationId" value={data.locationId} />
+          {currentLocationId ? (
+            <input type="hidden" name="locationId" value={currentLocationId} />
           ) : null}
-          {data.filter ? <input type="hidden" name="filter" value={data.filter} /> : null}
+          {currentFilter ? <input type="hidden" name="filter" value={currentFilter} /> : null}
           <s-button type="submit">Create draft POs</s-button>
         </Form>
         {actionData && typeof actionData === "object" && "message" in actionData ? (
