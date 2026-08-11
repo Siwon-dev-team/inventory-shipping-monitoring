@@ -118,7 +118,7 @@ function actionLabel(action: string): string {
 }
 
 export default function RulesPage() {
-  const { rules, plan, canUseRules } = useLoaderData<typeof loader>();
+  const { rules, canUseRules } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
 
   if (!canUseRules) {
@@ -169,10 +169,11 @@ export default function RulesPage() {
               <input type="hidden" name="actionType" value="create" />
               <div style={{ display: "grid", gap: "16px", gridTemplateColumns: "1fr 1fr 1fr 1fr auto" }}>
                 <div>
-                  <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
+                  <label htmlFor="rule-name" style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
                     Rule Name
                   </label>
                   <input
+                    id="rule-name"
                     type="text"
                     name="name"
                     placeholder="e.g., Low stock alert"
@@ -180,10 +181,11 @@ export default function RulesPage() {
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
+                  <label htmlFor="rule-trigger" style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
                     Trigger
                   </label>
                   <select
+                    id="rule-trigger"
                     name="trigger"
                     style={{ width: "100%", padding: "8px", border: "1px solid #ccc", borderRadius: "4px" }}
                   >
@@ -193,10 +195,11 @@ export default function RulesPage() {
                   </select>
                 </div>
                 <div>
-                  <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
+                  <label htmlFor="rule-value" style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
                     Value
                   </label>
                   <input
+                    id="rule-value"
                     type="number"
                     name="triggerValue"
                     defaultValue={7}
@@ -205,10 +208,11 @@ export default function RulesPage() {
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
+                  <label htmlFor="rule-action" style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
                     Action
                   </label>
                   <select
+                    id="rule-action"
                     name="action"
                     style={{ width: "100%", padding: "8px", border: "1px solid #ccc", borderRadius: "4px" }}
                   >

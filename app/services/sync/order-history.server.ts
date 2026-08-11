@@ -1,15 +1,5 @@
 import prisma from "../../db.server";
 
-type ShopifyOrder = {
-  id: string;
-  created_at: string;
-  line_items: Array<{
-    variant_id: string | null;
-    quantity: number;
-    price: string;
-  }>;
-};
-
 type OrdersQueryResult = {
   orders: {
     edges: Array<{

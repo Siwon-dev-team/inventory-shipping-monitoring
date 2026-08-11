@@ -188,10 +188,11 @@ export default function AiInsightsPage() {
             <Form method="post">
               <input type="hidden" name="actionType" value="ask" />
               <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
+                <label htmlFor="ai-question" style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
                   Question
                 </label>
                 <input
+                  id="ai-question"
                   type="text"
                   name="question"
                   placeholder="e.g. What should I reorder? / Any stockout risks? / How is my inventory?"
@@ -256,7 +257,7 @@ export default function AiInsightsPage() {
         ) : insights.length === 0 ? (
           <Card>
             <div style={{ padding: "16px", color: "#637381" }}>
-              No insights yet. Click "Refresh insights" to generate.
+              No insights yet. Click &quot;Refresh insights&quot; to generate.
             </div>
           </Card>
         ) : (

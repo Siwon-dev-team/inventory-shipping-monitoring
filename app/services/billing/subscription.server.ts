@@ -1,4 +1,4 @@
-import { SubscriptionPlan, SubscriptionStatus } from "@prisma/client";
+import type { SubscriptionPlan } from "@prisma/client";
 import prisma from "../../db.server";
 
 const PLAN_LIMITS = {

@@ -60,7 +60,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function ReportsPage() {
-  const { reports, plan, canUseReports } = useLoaderData<typeof loader>();
+  const { reports, canUseReports } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
 
   if (!canUseReports) {
