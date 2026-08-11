@@ -93,6 +93,31 @@ enum AiInsightType {
   SUMMARY
 }
 
+enum SubscriptionPlan {
+  FREE
+  PRO
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+  PENDING
+}
+
+enum ReplenishmentTrigger {
+  DAYS_OF_COVER
+  STOCKOUT_DATE
+  QUANTITY_BELOW
+}
+
+enum ReplenishmentAction {
+  CREATE_DRAFT_PO
+  SEND_PO
+  NOTIFY_SLACK
+  NOTIFY_EMAIL
+}
+
 model Merchant {
   id           Int      @id @default(autoincrement())
   shopDomain   String   @unique
@@ -101,18 +126,22 @@ model Merchant {
   updatedAt    DateTime @updatedAt
 
   settings               Settings?
+  subscription           Subscription?
   suppliers              Supplier[]
   locations              Location[]
   products               Product[]
   variants               Variant[]
   inventoryAlerts        InventoryAlert[]
   salesData              SalesData[]
+  dailySalesSnapshots    DailySalesSnapshot[]
   notificationFlows      NotificationFlow[]
   notificationDeliveries NotificationDelivery[]
   webhookDeliveries      WebhookDelivery[]
   metricEvents           MetricEvent[]
   purchaseOrders         PurchaseOrder[]
   aiInsights             AiInsight[]
+  replenishmentRules     ReplenishmentRule[]
+  weeklyReports          WeeklyReport[]
 }
 
 model Settings {
@@ -400,5 +429,79 @@ model AiInsight {
 
   merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
 
+  @@index([merchantId, createdAt])
+}
+
+model Subscription {
+  id                    Int                @id @default(autoincrement())
+  merchantId            Int                @unique
+  plan                  SubscriptionPlan   @default(FREE)
+  status                SubscriptionStatus @default(ACTIVE)
+  shopifySubscriptionId String?
+  dailyQueryCount       Int                @default(0)
+  dailyQueryLimit       Int                @default(20)
+  queryResetAt          DateTime           @default(now())
+  trialEndsAt           DateTime?
+  currentPeriodStart    DateTime?
+  currentPeriodEnd      DateTime?
+  cancelledAt           DateTime?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+}
+
+model DailySalesSnapshot {
+  id           Int      @id @default(autoincrement())
+  merchantId   Int
+  variantId    Int
+  date         DateTime
+  quantitySold Int      @default(0)
+  revenue      Float    @default(0)
+  inventoryQty Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@unique([merchantId, variantId, date])
+  @@index([merchantId, date])
+  @@index([variantId, date])
+}
+
+model ReplenishmentRule {
+  id           Int                   @id @default(autoincrement())
+  merchantId   Int
+  name         String
+  enabled      Boolean               @default(true)
+  trigger      ReplenishmentTrigger
+  triggerValue Int
+  action       ReplenishmentAction
+  supplierId   Int?
+  locationId   Int?
+  lastRunAt    DateTime?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId, enabled])
+}
+
+model WeeklyReport {
+  id           Int      @id @default(autoincrement())
+  merchantId   Int
+  weekStart    DateTime
+  weekEnd      DateTime
+  summary      String
+  topProducts  String?
+  concerns     String?
+  actionItems  String?
+  metrics      String?
+  sentAt       DateTime?
+  createdAt    DateTime @default(now())
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@unique([merchantId, weekStart])
   @@index([merchantId, createdAt])
 }

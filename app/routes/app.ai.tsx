@@ -1,17 +1,29 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { Form, useActionData, useLoaderData } from "react-router";
-import { Badge, Card, IndexTable } from "@shopify/polaris";
+import { Form, useActionData, useLoaderData, Link } from "react-router";
+import { Badge, Card, IndexTable, Button } from "@shopify/polaris";
 import prisma from "../db.server";
 import { authenticate } from "../shopify.server";
 import {
   answerInventoryQuestion,
   getAiModeLabel,
 } from "../services/ai/chat.server";
+
+function getAiModeForResult(mode: "ai" | "rules" | "pro_ai" | null): string {
+  switch (mode) {
+    case "pro_ai":
+      return "Pro AI (GPT-4o)";
+    case "ai":
+      return "AI";
+    default:
+      return "Smart Rules";
+  }
+}
 import {
   getLatestInventoryInsights,
   persistInventoryInsights,
 } from "../services/ai/insights.server";
 import { ensureMerchantSetup } from "../services/merchant-setup.server";
+import { getOrCreateSubscription } from "../services/billing/subscription.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -19,6 +31,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const settings = await prisma.settings.findUnique({
     where: { merchantId: merchant.id },
   });
+
+  const subscription = await getOrCreateSubscription(merchant.id);
 
   const insights = settings?.aiEnabled
     ? await getLatestInventoryInsights(merchant.id, 15)
@@ -31,8 +45,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return {
     insights,
     aiEnabled: settings?.aiEnabled ?? true,
-    aiMode: getAiModeLabel(),
+    aiMode: getAiModeLabel(subscription.plan),
     isAiConfigured,
+    subscription: {
+      plan: subscription.plan,
+      dailyQueryCount: subscription.dailyQueryCount,
+      dailyQueryLimit: subscription.dailyQueryLimit,
+    },
   };
 };
 
@@ -70,6 +89,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         message: "AI assistant is disabled in Notifications settings.",
         answer: null,
         mode: null,
+        remaining: null,
+        limitReached: false,
       };
     }
 
@@ -79,6 +100,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       message: null,
       answer: result.answer,
       mode: result.mode,
+      remaining: result.remaining,
+      limitReached: result.limitReached ?? false,
     };
   }
 
@@ -99,28 +122,61 @@ function insightBadge(type: string) {
 }
 
 export default function AiInsightsPage() {
-  const { insights, aiEnabled, aiMode, isAiConfigured } = useLoaderData<typeof loader>();
+  const { insights, aiEnabled, aiMode, isAiConfigured, subscription } =
+    useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
+
+  const usagePercent = Math.round(
+    (subscription.dailyQueryCount / subscription.dailyQueryLimit) * 100
+  );
+  const isPro = subscription.plan === "PRO";
 
   return (
     <s-page heading="AI Inventory Insights">
       <s-section heading="Assistant">
         <Card>
           <div style={{ padding: "16px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
+              <Badge tone={isPro ? "success" : "info"}>
+                {subscription.plan}
+              </Badge>
               <Badge tone={isAiConfigured ? "success" : "warning"}>
                 {isAiConfigured ? "AI Active" : "Basic Mode"}
               </Badge>
               <span style={{ color: "#637381", fontSize: "14px" }}>{aiMode}</span>
             </div>
-            {isAiConfigured ? (
-              <p style={{ margin: 0, color: "#202223", fontSize: "14px" }}>
-                Ask any question about your inventory in natural language.
-              </p>
-            ) : (
-              <p style={{ margin: 0, color: "#637381", fontSize: "14px" }}>
-                Add a free AI key (Groq or Gemini) in server settings to enable smart answers.
-              </p>
+
+            <div style={{ marginBottom: "12px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                <span style={{ fontSize: "13px", color: "#637381" }}>Daily queries</span>
+                <span style={{ fontSize: "13px", color: "#637381" }}>
+                  {subscription.dailyQueryCount} / {subscription.dailyQueryLimit}
+                </span>
+              </div>
+              <div style={{
+                background: "#e0e0e0",
+                borderRadius: "4px",
+                height: "8px",
+                overflow: "hidden",
+              }}>
+                <div style={{
+                  background: usagePercent > 80 ? "#d72c0d" : "#008060",
+                  height: "100%",
+                  width: `${Math.min(usagePercent, 100)}%`,
+                  transition: "width 0.3s ease",
+                }} />
+              </div>
+            </div>
+
+            {!isPro && (
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <Link to="/app/billing">
+                  <Button variant="primary">Upgrade to Pro</Button>
+                </Link>
+                <span style={{ fontSize: "13px", color: "#637381" }}>
+                  Get GPT-4o, 1000 queries/day, advanced features
+                </span>
+              </div>
             )}
           </div>
         </Card>
@@ -155,12 +211,26 @@ export default function AiInsightsPage() {
         {actionData?.answer ? (
           <Card>
             <div style={{ padding: "16px" }}>
-              <div style={{ marginBottom: "12px" }}>
-                <Badge tone="success">AI Response</Badge>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+                <Badge tone={actionData.limitReached ? "critical" : actionData.mode === "pro_ai" ? "success" : "info"}>
+                  {actionData.limitReached ? "Limit Reached" : getAiModeForResult(actionData.mode ?? "rules")}
+                </Badge>
+                {actionData.remaining != null && !actionData.limitReached && (
+                  <span style={{ fontSize: "12px", color: "#637381" }}>
+                    {actionData.remaining} queries remaining today
+                  </span>
+                )}
               </div>
               <div style={{ whiteSpace: "pre-wrap", lineHeight: "1.7", color: "#202223" }}>
                 {actionData.answer}
               </div>
+              {actionData.limitReached && !isPro && (
+                <div style={{ marginTop: "16px" }}>
+                  <Link to="/app/billing">
+                    <Button variant="primary">Upgrade to Pro</Button>
+                  </Link>
+                </div>
+              )}
             </div>
           </Card>
         ) : null}

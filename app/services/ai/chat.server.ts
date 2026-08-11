@@ -1,10 +1,24 @@
+import type { SubscriptionPlan } from "@prisma/client";
 import { buildReorderList } from "../inventory/reorder-list.server";
 import { generateInventoryInsights } from "./insights.server";
+import {
+  checkQueryLimit,
+  incrementQueryCount,
+  hasFeature,
+} from "../billing/subscription.server";
 
 type ChatContext = {
   summary: string;
   topSkus: string[];
   insights: string[];
+};
+
+export type AiAnswerResult = {
+  answer: string;
+  mode: "ai" | "rules" | "pro_ai";
+  plan: SubscriptionPlan;
+  remaining: number;
+  limitReached?: boolean;
 };
 
 async function buildChatContext(merchantId: number): Promise<ChatContext> {
@@ -233,7 +247,11 @@ async function answerWithGemini(question: string, context: ChatContext): Promise
   return payload.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? null;
 }
 
-async function answerWithOpenAI(question: string, context: ChatContext): Promise<string | null> {
+async function answerWithOpenAI(
+  question: string,
+  context: ChatContext,
+  model?: string,
+): Promise<string | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
 
@@ -245,7 +263,7 @@ async function answerWithOpenAI(question: string, context: ChatContext): Promise
       authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
+      model: model ?? process.env.OPENAI_MODEL ?? "gpt-4o-mini",
       temperature: 0.3,
       max_tokens: 500,
       messages: [
@@ -264,6 +282,131 @@ async function answerWithOpenAI(question: string, context: ChatContext): Promise
   return payload.choices?.[0]?.message?.content?.trim() ?? null;
 }
 
+async function answerWithProAI(
+  question: string,
+  context: ChatContext,
+  merchantId: number,
+): Promise<string | null> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return answerWithGroq(question, context);
+
+  const { getFunctionDefinitions, executeFunction } = await import("./function-calling.server");
+  const proPrompts = buildProPromptMessages(question, context);
+  const functions = getFunctionDefinitions();
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4o",
+      temperature: 0.3,
+      max_tokens: 1000,
+      messages: [
+        { role: "system", content: proPrompts.system },
+        { role: "user", content: proPrompts.user },
+      ],
+      tools: functions.map((f) => ({ type: "function", function: f })),
+      tool_choice: "auto",
+    }),
+  });
+
+  if (!response.ok) return answerWithGroq(question, context);
+
+  const payload = (await response.json()) as {
+    choices?: Array<{
+      message?: {
+        content?: string;
+        tool_calls?: Array<{
+          id: string;
+          function: { name: string; arguments: string };
+        }>;
+      };
+    }>;
+  };
+
+  const message = payload.choices?.[0]?.message;
+
+  // If there are function calls, execute them
+  if (message?.tool_calls && message.tool_calls.length > 0) {
+    const toolResults: string[] = [];
+
+    for (const toolCall of message.tool_calls) {
+      const fnName = toolCall.function.name;
+      const fnArgs = JSON.parse(toolCall.function.arguments || "{}");
+
+      const result = await executeFunction(merchantId, fnName as Parameters<typeof executeFunction>[1], fnArgs);
+      toolResults.push(`**${fnName}**: ${result.message}\n${JSON.stringify(result.data, null, 2)}`);
+    }
+
+    // Make a follow-up call to summarize the results
+    const followUpResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        temperature: 0.3,
+        max_tokens: 1000,
+        messages: [
+          { role: "system", content: proPrompts.system },
+          { role: "user", content: proPrompts.user },
+          { role: "assistant", content: null, tool_calls: message.tool_calls },
+          ...message.tool_calls.map((tc, i) => ({
+            role: "tool" as const,
+            tool_call_id: tc.id,
+            content: toolResults[i],
+          })),
+        ],
+      }),
+    });
+
+    if (followUpResponse.ok) {
+      const followUpPayload = (await followUpResponse.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      return followUpPayload.choices?.[0]?.message?.content?.trim() ?? null;
+    }
+  }
+
+  return message?.content?.trim() ?? null;
+}
+
+function buildProPromptMessages(question: string, context: ChatContext) {
+  return {
+    system: `You are an advanced inventory intelligence assistant for a Shopify merchant. You have access to detailed inventory analytics and can provide strategic recommendations.
+
+Capabilities:
+- Analyze inventory health and trends
+- Identify stockout risks with confidence levels
+- Recommend optimal reorder quantities and timing
+- Suggest pricing strategies for dead stock
+- Provide what-if scenario analysis
+- Give actionable, prioritized recommendations
+
+Be specific, data-driven, and include confidence levels when making predictions. Format responses clearly with sections and bullet points.`,
+    user: [
+      "=== INVENTORY ANALYTICS ===",
+      context.summary,
+      "",
+      "=== TOP PRIORITY SKUS ===",
+      context.topSkus.join("\n"),
+      "",
+      "=== CURRENT ALERTS & INSIGHTS ===",
+      context.insights.join("\n"),
+      "",
+      `=== MERCHANT QUESTION ===`,
+      question,
+      "",
+      "Provide a detailed, actionable response with specific recommendations.",
+    ].join("\n"),
+  };
+}
+
 async function answerWithLlm(question: string, context: ChatContext): Promise<string | null> {
   // Try providers in order: Groq (free) -> Gemini (free) -> OpenAI (paid)
   const groqAnswer = await answerWithGroq(question, context);
@@ -278,28 +421,85 @@ async function answerWithLlm(question: string, context: ChatContext): Promise<st
   return null;
 }
 
-export async function answerInventoryQuestion(merchantId: number, question: string) {
+export async function answerInventoryQuestion(
+  merchantId: number,
+  question: string,
+): Promise<AiAnswerResult> {
   const trimmed = question.trim();
+
+  // Check query limits
+  const limitCheck = await checkQueryLimit(merchantId);
+
   if (!trimmed) {
     return {
       answer: "Ask a question about reorder priorities, stockout risk, dead stock, or inventory health.",
-      mode: "rules" as const,
+      mode: "rules",
+      plan: limitCheck.plan,
+      remaining: limitCheck.remaining,
     };
   }
 
-  const context = await buildChatContext(merchantId);
-  const llmAnswer = await answerWithLlm(trimmed, context);
-
-  if (llmAnswer) {
-    return { answer: llmAnswer, mode: "ai" as const };
+  // Check if limit reached
+  if (!limitCheck.allowed) {
+    return {
+      answer: `Daily query limit reached (${limitCheck.plan === "FREE" ? "20" : "1000"} queries). ${
+        limitCheck.plan === "FREE"
+          ? "Upgrade to Pro for 1,000 daily queries and advanced AI features."
+          : "Limit resets at midnight UTC."
+      }`,
+      mode: "rules",
+      plan: limitCheck.plan,
+      remaining: 0,
+      limitReached: true,
+    };
   }
 
-  return { answer: answerWithRules(trimmed, context), mode: "rules" as const };
+  // Increment usage
+  await incrementQueryCount(merchantId);
+  const remaining = limitCheck.remaining - 1;
+
+  const context = await buildChatContext(merchantId);
+
+  // Use Pro AI if on Pro plan and has advanced_qa feature
+  if (limitCheck.plan === "PRO" && hasFeature("PRO", "advanced_qa")) {
+    const proAnswer = await answerWithProAI(trimmed, context, merchantId);
+    if (proAnswer) {
+      return { answer: proAnswer, mode: "pro_ai", plan: "PRO", remaining };
+    }
+  }
+
+  // Use free tier AI (Groq/Gemini/OpenAI fallback)
+  const llmAnswer = await answerWithLlm(trimmed, context);
+  if (llmAnswer) {
+    return { answer: llmAnswer, mode: "ai", plan: limitCheck.plan, remaining };
+  }
+
+  // Fallback to rules
+  return {
+    answer: answerWithRules(trimmed, context),
+    mode: "rules",
+    plan: limitCheck.plan,
+    remaining,
+  };
 }
 
-export function getAiModeLabel() {
+export function getAiModeLabel(plan?: SubscriptionPlan) {
+  if (plan === "PRO" && process.env.OPENAI_API_KEY) {
+    return "Pro AI (GPT-4o)";
+  }
   if (process.env.GROQ_API_KEY) return "AI (Groq Llama)";
   if (process.env.GEMINI_API_KEY) return "AI (Google Gemini)";
   if (process.env.OPENAI_API_KEY) return "AI (OpenAI)";
   return "Smart rules";
+}
+
+export function getAiModeForResult(mode: "ai" | "rules" | "pro_ai"): string {
+  switch (mode) {
+    case "pro_ai":
+      return "Pro AI (GPT-4o)";
+    case "ai":
+      return "AI";
+    default:
+      return "Smart Rules";
+  }
 }

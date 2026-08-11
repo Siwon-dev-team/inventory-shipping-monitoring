@@ -35,7 +35,10 @@ export default function App() {
           <a href="/app/forecasting">Forecasting</a>
           <a href="/app/suppliers">Suppliers</a>
           <a href="/app/ai">AI insights</a>
+          <a href="/app/rules">Auto-replenishment</a>
+          <a href="/app/reports">Weekly reports</a>
           <a href="/app/notifications">Notifications</a>
+          <a href="/app/billing">Subscription</a>
         </NavMenu>
         <Outlet />
       </PolarisAppProvider>
