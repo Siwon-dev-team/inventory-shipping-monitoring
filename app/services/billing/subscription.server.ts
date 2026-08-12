@@ -165,5 +165,5 @@ function getNextResetDate(): Date {
   return reset;
 }
 
-export const PRO_PRICE = 19.0;
+export const PRO_PRICE = 9.99;
 export const PRO_PRICE_CURRENCY = "USD";

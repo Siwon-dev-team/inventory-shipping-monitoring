@@ -5,10 +5,11 @@ type AdminApiContext = {
 };
 
 const CREATE_SUBSCRIPTION_MUTATION = `
-  mutation AppSubscriptionCreate($name: String!, $returnUrl: URL!, $lineItems: [AppSubscriptionLineItemInput!]!) {
+  mutation AppSubscriptionCreate($name: String!, $returnUrl: URL!, $trialDays: Int, $lineItems: [AppSubscriptionLineItemInput!]!) {
     appSubscriptionCreate(
       name: $name
       returnUrl: $returnUrl
+      trialDays: $trialDays
       lineItems: $lineItems
       test: true
     ) {
@@ -93,6 +94,7 @@ export async function createProSubscription(
     variables: {
       name: "Pro Plan",
       returnUrl,
+      trialDays: 7,
       lineItems: [
         {
           plan: {
