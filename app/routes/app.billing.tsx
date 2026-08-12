@@ -1,7 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { Form, useLoaderData, useNavigation, redirect, useActionData } from "react-router";
+import { Form, useLoaderData, useNavigation, redirect } from "react-router";
 import { Badge, Card, IndexTable, Button } from "@shopify/polaris";
-import { useEffect } from "react";
 import { authenticate } from "../shopify.server";
 import { ensureMerchantSetup } from "../services/merchant-setup.server";
 import {
@@ -63,8 +62,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     if (result.confirmationUrl) {
-      // Return the URL for client-side redirect via App Bridge
-      return { ok: true, redirectUrl: result.confirmationUrl };
+      // Redirect to intermediate page that handles external redirect
+      return redirect(`/app/billing-redirect?url=${encodeURIComponent(result.confirmationUrl)}`);
     }
 
     return { ok: false, error: "Failed to create subscription" };
@@ -90,17 +89,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export default function BillingPage() {
   const data = useLoaderData<typeof loader>();
-  const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
-
-  // Handle redirect to Shopify billing page
-  useEffect(() => {
-    if (actionData && "redirectUrl" in actionData && actionData.redirectUrl) {
-      // Redirect the parent window (not the iframe) to Shopify billing
-      window.top?.location.assign(actionData.redirectUrl);
-    }
-  }, [actionData]);
 
   const isPro = data.subscription.plan === "PRO";
   const usagePercent = Math.round(
