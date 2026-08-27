@@ -1,6 +1,7 @@
 import prisma from "../../db.server";
 import { buildReorderList } from "../inventory/reorder-list.server";
 import { generateInventoryInsights } from "../ai/insights.server";
+import { logger } from "../logger.server";
 
 export async function generateWeeklyReport(merchantId: number) {
   const now = new Date();
@@ -155,7 +156,13 @@ export async function sendWeeklyReportEmail(merchantId: number, reportId: number
   const toEmail = report.merchant.contactEmail;
 
   if (!resendKey || !fromEmail || !toEmail) {
-    console.log("Email not configured, skipping send");
+    logger.warn("Email not configured for weekly report", {
+      merchantId,
+      reportId,
+      hasResendKey: Boolean(resendKey),
+      hasFromEmail: Boolean(fromEmail),
+      hasToEmail: Boolean(toEmail),
+    });
     return null;
   }
 
