@@ -3,6 +3,7 @@ import { buildReorderList } from "../inventory/reorder-list.server";
 import { createPurchaseOrdersFromReorderRows } from "../inventory/purchase-orders.server";
 import { sendSlackMessage } from "../notifications/slack.server";
 import { sendEmail } from "../notifications/email.server";
+import { logger } from "../logger.server";
 
 export async function runReplenishmentRules(merchantId: number): Promise<{
   rulesRun: number;
@@ -153,7 +154,10 @@ async function executeRuleAction(
             text: message,
           });
         } catch (error) {
-          console.error("Failed to send email:", error);
+          logger.error("Failed to send auto-replenishment email", error, {
+            ruleName: rule.name,
+            merchantId,
+          });
         }
       }
       break;

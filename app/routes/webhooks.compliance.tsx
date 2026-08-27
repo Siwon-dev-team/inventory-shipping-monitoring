@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
+import { logger } from "../services/logger.server";
 
 type CompliancePayload = {
   shop_id: number;
@@ -22,18 +23,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   switch (topic) {
     case "CUSTOMERS_DATA_REQUEST":
-      console.log(
-        `Received ${topic} webhook for ${shop}: request ${compliancePayload.data_request?.id ?? "unknown"}`,
-      );
+      logger.info("Received CUSTOMERS_DATA_REQUEST webhook", {
+        shop,
+        requestId: compliancePayload.data_request?.id ?? "unknown",
+      });
       break;
     case "CUSTOMERS_REDACT":
-      console.log(`Received ${topic} webhook for ${shop}`);
+      logger.info("Received CUSTOMERS_REDACT webhook", { shop });
       break;
     case "SHOP_REDACT":
-      console.log(`Received ${topic} webhook for ${shop}`);
+      logger.info("Received SHOP_REDACT webhook", { shop });
       break;
     default:
-      console.log(`Received unsupported compliance webhook topic ${topic} for ${shop}`);
+      logger.warn("Received unsupported compliance webhook topic", { shop, topic });
   }
 
   return new Response(null, { status: 200 });
